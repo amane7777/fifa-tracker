@@ -954,9 +954,32 @@ function Lineups({ teams, lineups, onSaveLineup }) {
   };
 
   const changeFormation = (f) => {
+    const oldSlots = slots;
+    const newSlots = FORMATIONS[f];
+
+    // Collect currently-assigned players grouped by the position they're
+    // playing now, so we can slot them into the same position in the new
+    // formation if it exists there too.
+    const playersByPos = {};
+    oldSlots.forEach((slot, i) => {
+      const name = assignments[i];
+      if (name) {
+        if (!playersByPos[slot.pos]) playersByPos[slot.pos] = [];
+        playersByPos[slot.pos].push(name);
+      }
+    });
+
+    const next = {};
+    newSlots.forEach((slot, i) => {
+      const pool = playersByPos[slot.pos];
+      if (pool && pool.length > 0) {
+        next[i] = pool.shift();
+      }
+    });
+
     setFormation(f);
-    setAssignments({});
-    onSaveLineup(nation, f, {});
+    setAssignments(next);
+    onSaveLineup(nation, f, next);
   };
 
   const filledCount = Object.values(assignments).filter(Boolean).length;
