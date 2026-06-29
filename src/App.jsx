@@ -37,48 +37,157 @@ function fmtPct(n, dp = 1) {
   return `${n.toFixed(dp)}%`;
 }
 
+// ── CSV export ────────────────────────────────────────────────────────────
+function csvEscape(val) {
+  if (val === null || val === undefined) return "";
+  const s = String(val);
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function exportBetsToCSV(bets) {
+  const headers = [
+    "Home", "Away", "Market", "Match #", "My Odds", "Bookie Odds",
+    "My Edge %", "Stake (A$)", "Home Goals", "Away Goals",
+    "Result", "P&L (A$)", "Expected P&L (A$)", "Notes"
+  ];
+  const rows = bets.map(b => [
+    b.home, b.away, b.market, b.matchNum,
+    b.myOdds, b.bookieOdds,
+    b.edgePct !== null && b.edgePct !== undefined ? b.edgePct.toFixed(2) : "",
+    b.stake !== null && b.stake !== undefined ? b.stake.toFixed(2) : "",
+    b.homeGoals, b.awayGoals, b.result,
+    b.pnl !== null && b.pnl !== undefined ? b.pnl.toFixed(2) : "",
+    expectedPnl(b).toFixed(2),
+    b.notes || ""
+  ]);
+  const csv = [headers, ...rows].map(row => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `fifa26-bets-${date}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 // ── Sparkline / cumulative chart ─────────────────────────────────────────
+function expectedPnl(bet) {
+  if (bet.myOdds === null || bet.myOdds === undefined || !bet.bookieOdds) return 0;
+  const myProb = 1 / bet.myOdds;
+  const winAmt = bet.stake * (bet.bookieOdds - 1);
+  return myProb * winAmt - (1 - myProb) * bet.stake;
+}
+
+function niceStep(range) {
+  if (range <= 0) return 100;
+  const rough = range / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  let step;
+  if (norm < 1.5) step = 1;
+  else if (norm < 3) step = 2;
+  else if (norm < 7) step = 5;
+  else step = 10;
+  return step * mag;
+}
+
+function fmtAxis(n) {
+  const abs = Math.abs(n);
+  if (abs >= 1000) return `${n < 0 ? "-" : ""}$${(abs / 1000).toFixed(abs % 1000 === 0 ? 0 : 1)}k`;
+  return `${n < 0 ? "-" : ""}$${abs.toFixed(0)}`;
+}
+
 function CumulativeChart({ bets }) {
-  const points = useMemo(() => {
-    const settled = bets.filter(b => b.result && b.result !== "Pending");
-    let running = 0;
-    const pts = [{ x: 0, y: 0 }];
-    settled.forEach((b, i) => {
-      running += b.pnl || 0;
-      pts.push({ x: i + 1, y: running });
+  const { actualPts, expectedPts } = useMemo(() => {
+    // Ordered by when they were logged (insertion order), same as Bet Log.
+    let runningActual = 0;
+    let runningExpected = 0;
+    const aPts = [{ x: 0, y: 0 }];
+    const ePts = [{ x: 0, y: 0 }];
+    bets.forEach((b, i) => {
+      const isSettled = b.result && b.result !== "Pending";
+      if (isSettled) runningActual += b.pnl || 0;
+      runningExpected += expectedPnl(b);
+      aPts.push({ x: i + 1, y: runningActual });
+      ePts.push({ x: i + 1, y: runningExpected });
     });
-    return pts;
+    return { actualPts: aPts, expectedPts: ePts };
   }, [bets]);
 
-  if (points.length < 2) {
+  if (actualPts.length < 2) {
     return (
-      <div style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>
-        No settled bets yet — log results to see your curve
+      <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>
+        Log a bet to see your curve
       </div>
     );
   }
 
-  const w = 700, h = 160, pad = 8;
-  const ys = points.map(p => p.y);
-  const minY = Math.min(0, ...ys);
-  const maxY = Math.max(0, ...ys);
-  const range = maxY - minY || 1;
-  const xScale = (x) => pad + (x / (points.length - 1)) * (w - pad * 2);
-  const yScale = (y) => h - pad - ((y - minY) / range) * (h - pad * 2);
+  const w = 700, h = 190;
+  const padTop = 10, padBottom = 22, padLeft = 54;
+  const allYs = [...actualPts.map(p => p.y), ...expectedPts.map(p => p.y), 0];
+  const rawMin = Math.min(...allYs);
+  const rawMax = Math.max(...allYs);
+  const step = niceStep(rawMax - rawMin);
+  const minY = Math.floor(rawMin / step) * step;
+  const maxY = Math.ceil(rawMax / step) * step;
+  const range = (maxY - minY) || 1;
+
+  const plotW = w - padLeft - 10;
+  const plotH = h - padTop - padBottom;
+  const xScale = (x) => padLeft + (x / (actualPts.length - 1)) * plotW;
+  const yScale = (y) => padTop + plotH - ((y - minY) / range) * plotH;
   const zeroY = yScale(0);
 
-  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L ${xScale(points[points.length - 1].x).toFixed(1)} ${zeroY.toFixed(1)} L ${xScale(0).toFixed(1)} ${zeroY.toFixed(1)} Z`;
-  const last = points[points.length - 1];
-  const isProfit = last.y >= 0;
+  const gridLines = [];
+  for (let v = minY; v <= maxY + 1e-6; v += step) gridLines.push(v);
+
+  const buildPath = (pts) => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(" ");
+  const actualPath = buildPath(actualPts);
+  const expectedPath = buildPath(expectedPts);
+  const lastActual = actualPts[actualPts.length - 1];
+  const lastExpected = expectedPts[expectedPts.length - 1];
+  const isProfit = lastActual.y >= 0;
+  const areaPath = `${actualPath} L ${xScale(lastActual.x).toFixed(1)} ${zeroY.toFixed(1)} L ${xScale(0).toFixed(1)} ${zeroY.toFixed(1)} Z`;
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 140, display: "block" }} preserveAspectRatio="none">
-      <line x1={pad} y1={zeroY} x2={w - pad} y2={zeroY} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3" />
-      <path d={areaPath} fill={isProfit ? "var(--profit)" : "var(--loss)"} opacity="0.12" />
-      <path d={linePath} fill="none" stroke={isProfit ? "var(--profit)" : "var(--loss)"} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={xScale(last.x)} cy={yScale(last.y)} r="3.5" fill={isProfit ? "var(--profit)" : "var(--loss)"} />
-    </svg>
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 180, display: "block" }} preserveAspectRatio="none">
+        {gridLines.map((v, i) => (
+          <g key={i}>
+            <line x1={padLeft} y1={yScale(v)} x2={w - 10} y2={yScale(v)}
+              stroke={v === 0 ? "var(--border-strong)" : "var(--border)"}
+              strokeWidth="1" strokeDasharray={v === 0 ? "none" : "3 3"} />
+            <text x={padLeft - 8} y={yScale(v)} textAnchor="end" dominantBaseline="middle"
+              fontSize="10.5" fontFamily="var(--mono)" fill="var(--text-muted)">
+              {fmtAxis(v)}
+            </text>
+          </g>
+        ))}
+        <path d={areaPath} fill={isProfit ? "var(--profit)" : "var(--loss)"} opacity="0.1" />
+        <path d={expectedPath} fill="none" stroke="var(--accent-blue)" strokeWidth="1.75"
+          strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
+        <path d={actualPath} fill="none" stroke={isProfit ? "var(--profit)" : "var(--loss)"}
+          strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={xScale(lastActual.x)} cy={yScale(lastActual.y)} r="3.5" fill={isProfit ? "var(--profit)" : "var(--loss)"} />
+        <circle cx={xScale(lastExpected.x)} cy={yScale(lastExpected.y)} r="3" fill="var(--accent-blue)" />
+      </svg>
+      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 6, fontSize: 11 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--text-muted)" }}>
+          <span style={{ width: 14, height: 2, background: isProfit ? "var(--profit)" : "var(--loss)", display: "inline-block" }} />
+          Actual P&L
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--text-muted)" }}>
+          <span style={{ width: 14, height: 0, borderTop: "1.75px dashed var(--accent-blue)", display: "inline-block" }} />
+          Expected P&L
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -296,20 +405,28 @@ function Dashboard({ bets }) {
 
   return (
     <div style={{ paddingBottom: 90 }}>
-      <div style={{ padding: "18px 16px 4px" }}>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-          Net P&L · {stats.totalBets} bets logged
+      <div style={{ padding: "18px 16px 4px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            Net P&L · {stats.totalBets} bets logged
+          </div>
+          <div style={{
+            fontFamily: "var(--mono)", fontSize: 38, fontWeight: 700, marginTop: 4,
+            color: isProfit ? "var(--profit)" : "var(--loss)"
+          }}>
+            {fmtMoney(stats.totalPnl, { dp: 0 })}
+          </div>
+          <div style={{ display: "flex", gap: 14, marginTop: 4, fontSize: 12.5, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
+            <span>ROI <b style={{ color: isProfit ? "var(--profit)" : "var(--loss)" }}>{fmtPct(stats.roi, 1)}</b></span>
+            <span>Win rate <b style={{ color: "var(--text)" }}>{fmtPct(stats.winRate, 1)}</b></span>
+          </div>
         </div>
-        <div style={{
-          fontFamily: "var(--mono)", fontSize: 38, fontWeight: 700, marginTop: 4,
-          color: isProfit ? "var(--profit)" : "var(--loss)"
+        <button onClick={() => exportBetsToCSV(bets)} style={{
+          ...btnStyle({ small: true }), display: "flex", alignItems: "center", gap: 5,
+          flexShrink: 0, marginTop: 2
         }}>
-          {fmtMoney(stats.totalPnl, { dp: 0 })}
-        </div>
-        <div style={{ display: "flex", gap: 14, marginTop: 4, fontSize: 12.5, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-          <span>ROI <b style={{ color: isProfit ? "var(--profit)" : "var(--loss)" }}>{fmtPct(stats.roi, 1)}</b></span>
-          <span>Win rate <b style={{ color: "var(--text)" }}>{fmtPct(stats.winRate, 1)}</b></span>
-        </div>
+          ⬇ Export CSV
+        </button>
       </div>
 
       <div style={{ padding: "10px 16px 0" }}>
