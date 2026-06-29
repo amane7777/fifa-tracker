@@ -971,7 +971,9 @@ function Lineups({ teams, lineups, onSaveLineup }) {
 
       <Field label="Formation">
         <select value={formation} onChange={e => changeFormation(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
-          {Object.keys(FORMATIONS).map(f => <option key={f} value={f}>{f}</option>)}
+          {Object.keys(FORMATIONS)
+            .filter(f => !f.endsWith("(current)") || f === `${nation} (current)`)
+            .map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       </Field>
 
