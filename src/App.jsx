@@ -163,7 +163,7 @@ function ResultBadge({ result }) {
 }
 
 // ── Bet row (log list) ───────────────────────────────────────────────────
-function BetRow({ bet, onUpdateResult }) {
+function BetRow({ bet, onUpdateResult, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [hg, setHg] = useState(bet.homeGoals ?? "");
   const [ag, setAg] = useState(bet.awayGoals ?? "");
@@ -171,6 +171,12 @@ function BetRow({ bet, onUpdateResult }) {
   const save = () => {
     onUpdateResult(bet.id, hg === "" ? null : Number(hg), ag === "" ? null : Number(ag));
     setEditing(false);
+  };
+
+  const handleDelete = () => {
+    if (window.confirm(`Delete this bet? (${bet.home} vs ${bet.away}, ${bet.market}) This can't be undone.`)) {
+      onDelete(bet.id);
+    }
   };
 
   return (
@@ -212,12 +218,20 @@ function BetRow({ bet, onUpdateResult }) {
           <button onClick={() => setEditing(false)} style={btnStyle({ small: true })}>Cancel</button>
         </div>
       ) : (
-        <button onClick={() => setEditing(true)} style={{
-          marginTop: 10, background: "none", border: "none", color: "var(--accent-blue)",
-          fontSize: 11.5, cursor: "pointer", padding: 0, fontFamily: "var(--ui)"
-        }}>
-          {bet.result === "Pending" ? "Enter result →" : "Edit result"}
-        </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+          <button onClick={() => setEditing(true)} style={{
+            background: "none", border: "none", color: "var(--accent-blue)",
+            fontSize: 11.5, cursor: "pointer", padding: 0, fontFamily: "var(--ui)"
+          }}>
+            {bet.result === "Pending" ? "Enter result →" : "Edit result"}
+          </button>
+          <button onClick={handleDelete} style={{
+            background: "none", border: "none", color: "var(--loss)",
+            fontSize: 11.5, cursor: "pointer", padding: 0, fontFamily: "var(--ui)", opacity: 0.75
+          }}>
+            Delete
+          </button>
+        </div>
       )}
     </div>
   );
@@ -340,7 +354,7 @@ function Dashboard({ bets }) {
 }
 
 // ── Bet log list ──────────────────────────────────────────────────────────
-function BetLog({ bets, onUpdateResult, filter, setFilter }) {
+function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter }) {
   const filtered = useMemo(() => {
     if (filter === "all") return bets;
     if (filter === "pending") return bets.filter(b => b.result === "Pending");
@@ -370,7 +384,7 @@ function BetLog({ bets, onUpdateResult, filter, setFilter }) {
           No bets here yet.
         </div>
       ) : (
-        ordered.map(bet => <BetRow key={bet.id} bet={bet} onUpdateResult={onUpdateResult} />)
+        ordered.map(bet => <BetRow key={bet.id} bet={bet} onUpdateResult={onUpdateResult} onDelete={onDelete} />)
       )}
     </div>
   );
@@ -656,6 +670,24 @@ export default function App() {
     }
   };
 
+  const deleteBet = async (id) => {
+    const prevBets = bets;
+    setBets(prev => prev.filter(b => b.id !== id));
+    setSaving(true);
+    try {
+      await sbFetch(`bets?id=eq.${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+      setSaveError(false);
+    } catch (e) {
+      setBets(prevBets);
+      setSaveError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const resetToSeed = async () => {
     if (!window.confirm("Reset to your original 212 logged bets? This deletes everything in your database and starts fresh for every device.")) return;
     const fresh = seedBets();
@@ -732,7 +764,7 @@ export default function App() {
       </div>
 
       {tab === "dashboard" && <Dashboard bets={bets} />}
-      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} filter={logFilter} setFilter={setLogFilter} />}
+      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} filter={logFilter} setFilter={setLogFilter} />}
       {tab === "add" && <AddBet matches={SEED_MATCHES} markets={MARKETS} onAdd={addBet} onNavigate={setTab} />}
 
       <div style={{
