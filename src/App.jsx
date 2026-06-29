@@ -20,6 +20,27 @@ const TEAM_FLAGS = {
   "Türkiye": "🇹🇷", "USA": "🇺🇸", "Uruguay": "🇺🇾", "Uzbekistan": "🇺🇿",
 };
 
+// Maps any casing/spelling variant (lowercase, ALL CAPS, "usa", "iran",
+// "curacao" without the cedilla, etc.) to the correct official display name.
+const TEAM_DISPLAY_NAMES = {};
+TEAMS.forEach(t => { TEAM_DISPLAY_NAMES[t.toLowerCase()] = t; });
+// Spelling variants seen in older logged data that aren't simple casing fixes.
+Object.assign(TEAM_DISPLAY_NAMES, {
+  "usa": "USA", "us": "USA", "united states": "USA",
+  "iran": "IR Iran", "ir iran": "IR Iran",
+  "curacao": "Curaçao", "curaçao": "Curaçao",
+  "cote d'ivoire": "Côte D'Ivoire", "côte d'ivoire": "Côte D'Ivoire", "ivory coast": "Côte D'Ivoire",
+  "korea republic": "Korea Republic", "south korea": "Korea Republic",
+  "congo dr": "Congo DR", "dr congo": "Congo DR",
+  "turkiye": "Türkiye", "türkiye": "Türkiye", "turkey": "Türkiye",
+  "czechia": "Czechia", "czech republic": "Czechia",
+});
+
+function displayTeam(name) {
+  if (!name) return name;
+  return TEAM_DISPLAY_NAMES[name.trim().toLowerCase()] || name;
+}
+
 
 // ── Tier rules: edge band -> target win profit ──────────────────────────
 function getTier(edgePct) {
@@ -70,7 +91,7 @@ function exportBetsToCSV(bets) {
     "Result", "P&L (A$)", "Expected P&L (A$)", "Notes"
   ];
   const rows = bets.map(b => [
-    b.home, b.away, b.market, b.matchNum,
+    displayTeam(b.home), displayTeam(b.away), b.market, b.matchNum,
     b.myOdds, b.bookieOdds,
     b.edgePct !== null && b.edgePct !== undefined ? b.edgePct.toFixed(2) : "",
     b.stake !== null && b.stake !== undefined ? b.stake.toFixed(2) : "",
@@ -289,8 +310,8 @@ function ResultBadge({ result }) {
 
 // ── Bet row (log list) ───────────────────────────────────────────────────
 function betTitle(bet) {
-  if (bet.market === "Team A Win") return { text: `${bet.home} To Win`, flag: TEAM_FLAGS[bet.home] };
-  if (bet.market === "Team B Win") return { text: `${bet.away} To Win`, flag: TEAM_FLAGS[bet.away] };
+  if (bet.market === "Team A Win") return { text: `${displayTeam(bet.home)} To Win`, flag: TEAM_FLAGS[displayTeam(bet.home)] };
+  if (bet.market === "Team B Win") return { text: `${displayTeam(bet.away)} To Win`, flag: TEAM_FLAGS[displayTeam(bet.away)] };
   return { text: bet.market, flag: null };
 }
 
@@ -305,7 +326,7 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
   };
 
   const handleDelete = () => {
-    if (window.confirm(`Delete this bet? (${bet.home} vs ${bet.away}, ${bet.market}) This can't be undone.`)) {
+    if (window.confirm(`Delete this bet? (${displayTeam(bet.home)} vs ${displayTeam(bet.away)}, ${bet.market}) This can't be undone.`)) {
       onDelete(bet.id);
     }
   };
@@ -327,7 +348,7 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
             <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>@ {bet.bookieOdds?.toFixed(2)}</span>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-            {bet.home} <span>vs</span> {bet.away}
+            {displayTeam(bet.home)} <span>vs</span> {displayTeam(bet.away)}
           </div>
         </div>
         <ResultBadge result={bet.result} />
@@ -546,7 +567,7 @@ function HighlightSection({ title, bets, valueKey }) {
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {b.home} <span style={{ color: "var(--text-muted)" }}>vs</span> {b.away}
+                {displayTeam(b.home)} <span style={{ color: "var(--text-muted)" }}>vs</span> {displayTeam(b.away)}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{b.market}</div>
             </div>
@@ -623,7 +644,7 @@ function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilte
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                      {s.bet.home} {s.homeGoals}-{s.awayGoals} {s.bet.away}
+                      {displayTeam(s.bet.home)} {s.homeGoals}-{s.awayGoals} {displayTeam(s.bet.away)}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.bet.market}</div>
                   </div>
