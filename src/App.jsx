@@ -366,7 +366,7 @@ function btnStyle({ primary, small, full, danger } = {}) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
-function Dashboard({ bets }) {
+function Dashboard({ bets, onSelectMarket }) {
   const stats = useMemo(() => {
     const settled = bets.filter(b => b.result && b.result !== "Pending");
     const wins = settled.filter(b => b.result === "W").length;
@@ -398,7 +398,29 @@ function Dashboard({ bets }) {
       .map(([market, v]) => ({ market, ...v, winRate: v.settled ? (v.wins / v.settled) * 100 : 0 }))
       .sort((a, b) => b.pnl - a.pnl);
 
-    return { wins, losses, pushes, pendingCount: pending.length, totalPnl, totalStaked, pendingStaked, roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, totalBets: bets.length };
+    const byStakeDesc = [...bets].sort((a, b) => (b.stake || 0) - (a.stake || 0));
+    const topStaked = byStakeDesc.slice(0, 5);
+
+    const topWinningByProfit = settled
+      .filter(b => b.result === "W" && b.pnl > 0)
+      .sort((a, b) => b.pnl - a.pnl)
+      .slice(0, 5);
+
+    const topLosingByStake = settled
+      .filter(b => b.result === "L")
+      .sort((a, b) => (b.stake || 0) - (a.stake || 0))
+      .slice(0, 5);
+
+    const highestOddsWins = settled
+      .filter(b => b.result === "W")
+      .sort((a, b) => (b.bookieOdds || 0) - (a.bookieOdds || 0))
+      .slice(0, 5);
+
+    return {
+      wins, losses, pushes, pendingCount: pending.length, totalPnl, totalStaked, pendingStaked,
+      roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, totalBets: bets.length,
+      topStaked, topWinningByProfit, topLosingByStake, highestOddsWins,
+    };
   }, [bets]);
 
   const isProfit = stats.totalPnl >= 0;
@@ -446,12 +468,13 @@ function Dashboard({ bets }) {
         </div>
         <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
           {stats.marketRows.map((m, i) => (
-            <div key={m.market} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+            <button key={m.market} onClick={() => onSelectMarket(m.market)} style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", width: "100%",
+              background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "var(--ui)",
               borderBottom: i < stats.marketRows.length - 1 ? "1px solid var(--border)" : "none"
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{m.market}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{m.market}</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
                   {m.bets} bets · {fmtPct(m.winRate, 0)} WR
                 </div>
@@ -462,40 +485,112 @@ function Dashboard({ bets }) {
               }}>
                 {fmtMoney(m.pnl, { dp: 0 })}
               </div>
-            </div>
+              <span style={{ color: "var(--text-muted)", fontSize: 14, marginLeft: 2 }}>›</span>
+            </button>
           ))}
         </div>
+      </div>
+
+      <HighlightSection title="Top 5 biggest stakes" bets={stats.topStaked} valueKey="stake" />
+      <HighlightSection title="Top 5 winning bets by profit" bets={stats.topWinningByProfit} valueKey="pnl" />
+      <HighlightSection title="Top 5 losing bets by stake" bets={stats.topLosingByStake} valueKey="stake" />
+      <HighlightSection title="Highest odds wins" bets={stats.highestOddsWins} valueKey="odds" />
+    </div>
+  );
+}
+
+function HighlightSection({ title, bets, valueKey }) {
+  if (!bets.length) return null;
+  return (
+    <div style={{ padding: "4px 16px 0" }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+        {title}
+      </div>
+      <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+        {bets.map((b, i) => (
+          <div key={b.id} style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+            borderBottom: i < bets.length - 1 ? "1px solid var(--border)" : "none"
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {b.home} <span style={{ color: "var(--text-muted)" }}>vs</span> {b.away}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{b.market}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              {valueKey === "stake" && (
+                <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>
+                  {fmtMoney(b.stake, { dp: 0 })}
+                </div>
+              )}
+              {valueKey === "pnl" && (
+                <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 700, color: "var(--profit)" }}>
+                  +{fmtMoney(b.pnl, { dp: 0 })}
+                </div>
+              )}
+              {valueKey === "odds" && (
+                <div style={{ fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 700, color: "var(--profit)" }}>
+                  {b.bookieOdds?.toFixed(2)}
+                </div>
+              )}
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
+                {valueKey === "odds" ? fmtMoney(b.pnl, { dp: 0 }) + " profit" : (b.bookieOdds ? `@ ${b.bookieOdds.toFixed(2)}` : "")}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
 // ── Bet log list ──────────────────────────────────────────────────────────
-function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter }) {
+function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilter, setMarketFilter }) {
   const filtered = useMemo(() => {
-    if (filter === "all") return bets;
-    if (filter === "pending") return bets.filter(b => b.result === "Pending");
-    if (filter === "settled") return bets.filter(b => b.result && b.result !== "Pending");
-    return bets;
-  }, [bets, filter]);
+    let result = bets;
+    if (marketFilter) {
+      result = result.filter(b => b.market === marketFilter);
+    } else {
+      if (filter === "pending") result = result.filter(b => b.result === "Pending");
+      else if (filter === "settled") result = result.filter(b => b.result && b.result !== "Pending");
+    }
+    return result;
+  }, [bets, filter, marketFilter]);
 
   const ordered = [...filtered].reverse();
 
   return (
     <div style={{ padding: "16px 16px 90px" }}>
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {["all", "pending", "settled"].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{
-            ...btnStyle({ small: true }),
-            background: filter === f ? "var(--accent-blue)" : "var(--bg-panel-2)",
-            color: filter === f ? "#FFFFFF" : "var(--text-muted)",
-            border: filter === f ? "none" : "1px solid var(--border)",
-            textTransform: "capitalize"
+      {marketFilter ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <span style={{
+            display: "flex", alignItems: "center", gap: 6, background: "var(--accent-blue)", color: "#FFFFFF",
+            fontSize: 12.5, fontWeight: 600, padding: "6px 10px", borderRadius: 16
           }}>
-            {f}
-          </button>
-        ))}
-      </div>
+            {marketFilter}
+            <button onClick={() => setMarketFilter(null)} style={{
+              background: "none", border: "none", color: "#FFFFFF", cursor: "pointer", padding: 0,
+              fontSize: 14, lineHeight: 1, opacity: 0.85
+            }} aria-label="Clear market filter">×</button>
+          </span>
+          <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{ordered.length} bet{ordered.length === 1 ? "" : "s"}</span>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {["all", "pending", "settled"].map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              ...btnStyle({ small: true }),
+              background: filter === f ? "var(--accent-blue)" : "var(--bg-panel-2)",
+              color: filter === f ? "#FFFFFF" : "var(--text-muted)",
+              border: filter === f ? "none" : "1px solid var(--border)",
+              textTransform: "capitalize"
+            }}>
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
       {ordered.length === 0 ? (
         <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginTop: 40 }}>
           No bets here yet.
@@ -705,6 +800,7 @@ function seedBets() {
 export default function App() {
   const [tab, setTab] = useState("dashboard");
   const [logFilter, setLogFilter] = useState("all");
+  const [marketFilter, setMarketFilter] = useState(null);
   const [bets, setBets] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -882,8 +978,8 @@ export default function App() {
         </div>
       </div>
 
-      {tab === "dashboard" && <Dashboard bets={bets} />}
-      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} filter={logFilter} setFilter={setLogFilter} />}
+      {tab === "dashboard" && <Dashboard bets={bets} onSelectMarket={(market) => { setMarketFilter(market); setTab("log"); }} />}
+      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} filter={logFilter} setFilter={setLogFilter} marketFilter={marketFilter} setMarketFilter={setMarketFilter} />}
       {tab === "add" && <AddBet matches={SEED_MATCHES} markets={MARKETS} onAdd={addBet} onNavigate={setTab} />}
 
       <div style={{
