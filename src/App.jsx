@@ -42,6 +42,125 @@ function displayTeam(name) {
 }
 
 
+const TEAM_MODEL_DATA = {"Algeria": {"elo": 1925.0816, "xi": 76.4, "squad": 73.1, "attack": 81, "defence": 77.2}, "Argentina": {"elo": 2217.337, "xi": 83.5, "squad": 80.8, "attack": 87, "defence": 82.2}, "Australia": {"elo": 1857.1132, "xi": 69.3, "squad": 67.8, "attack": 70, "defence": 73.2}, "Austria": {"elo": 1933.0813, "xi": 78.8, "squad": 75.4, "attack": 76.3, "defence": 78.4}, "Belgium": {"elo": 1919.1187, "xi": 81.5, "squad": 78.4, "attack": 83, "defence": 80.6}, "Bosnia And Herzegovina": {"elo": 1760.8913, "xi": 72.2, "squad": 69.7, "attack": 78, "defence": 74}, "Brazil": {"elo": 2089.7664, "xi": 83.7, "squad": 80.4, "attack": 88, "defence": 86.2}, "Cabo Verde": {"elo": 1789.7664, "xi": 65.1, "squad": 69.2, "attack": 68.7, "defence": 71.6}, "Canada": {"elo": 1888.1043, "xi": 72.4, "squad": 70.6, "attack": 77.7, "defence": 77}, "Colombia": {"elo": 2076.1494, "xi": 73.5, "squad": 74.9, "attack": 80, "defence": 78.8}, "Congo DR": {"elo": 1875.8243, "xi": 73.6, "squad": 71.9, "attack": 80, "defence": 74.2}, "Côte D'Ivoire": {"elo": 1944.3395, "xi": 76.6, "squad": 74.5, "attack": 79.7, "defence": 79.4}, "Croatia": {"elo": 1980.0139, "xi": 79.8, "squad": 77.3, "attack": 81.3, "defence": 79.2}, "Curaçao": {"elo": 1644.0534, "xi": 69, "squad": 67, "attack": 69.3, "defence": 71.2}, "Czechia": {"elo": 1768.0409, "xi": 74.9, "squad": 73.8, "attack": 79.7, "defence": 75.6}, "Ecuador": {"elo": 1973.4181, "xi": 74.7, "squad": 72, "attack": 72.3, "defence": 79.4}, "Egypt": {"elo": 1849.1629, "xi": 70.4, "squad": 69.6, "attack": 83, "defence": 68}, "England": {"elo": 2109.9313, "xi": 82.2, "squad": 81.2, "attack": 87, "defence": 81.8}, "France": {"elo": 2185.7439, "xi": 86.5, "squad": 83.2, "attack": 89, "defence": 86.4}, "Germany": {"elo": 1989.589, "xi": 84, "squad": 81.2, "attack": 80.3, "defence": 86.2}, "Ghana": {"elo": 1819.8219, "xi": 72.3, "squad": 72.6, "attack": 78, "defence": 74.8}, "Haiti": {"elo": 1686.2115, "xi": 70.5, "squad": 66.7, "attack": 71.7, "defence": 71}, "IR Iran": {"elo": 1790.3259, "xi": 66.7, "squad": 65.7, "attack": 70.7, "defence": 67}, "Iraq": {"elo": 1642.3926, "xi": 64.7, "squad": 64.2, "attack": 67.3, "defence": 64}, "Japan": {"elo": 1999.0417, "xi": 76.7, "squad": 73.3, "attack": 69.3, "defence": 76.4}, "Jordan": {"elo": 1715.7002, "xi": 70, "squad": 69.2, "attack": 73, "defence": 72.6}, "Korea Republic": {"elo": 1849.9709, "xi": 75.3, "squad": 72.7, "attack": 75.3, "defence": 74}, "Mexico": {"elo": 2020.2167, "xi": 74.2, "squad": 72.5, "attack": 79, "defence": 75}, "Morocco": {"elo": 2054.7643, "xi": 77.5, "squad": 74.6, "attack": 80, "defence": 81.8}, "Netherlands": {"elo": 2063.3873, "xi": 83.5, "squad": 80.7, "attack": 81.7, "defence": 83.4}, "New Zealand": {"elo": 1654.0925, "xi": 68.8, "squad": 66.5, "attack": 68.3, "defence": 70.2}, "Norway": {"elo": 1980.2364, "xi": 79.2, "squad": 75.3, "attack": 84.3, "defence": 74.2}, "Panama": {"elo": 1719.3829, "xi": 61.8, "squad": 66.5, "attack": 65.7, "defence": 70}, "Paraguay": {"elo": 1868.1764, "xi": 70.4, "squad": 71, "attack": 76.7, "defence": 73.2}, "Portugal": {"elo": 2038.0823, "xi": 84.5, "squad": 81.6, "attack": 83.7, "defence": 84.2}, "Qatar": {"elo": 1623.1198, "xi": 71.3, "squad": 68.3, "attack": 76, "defence": 69.4}, "Saudi Arabia": {"elo": 1766.3436, "xi": 69.8, "squad": 68.5, "attack": 73.7, "defence": 72.6}, "Scotland": {"elo": 1844.9079, "xi": 75.6, "squad": 72.8, "attack": 74, "defence": 76}, "Senegal": {"elo": 1913.0772, "xi": 76.6, "squad": 75.9, "attack": 80.7, "defence": 78.6}, "South Africa": {"elo": 1730.7715, "xi": 69.4, "squad": 66, "attack": 68.3, "defence": 69.6}, "Spain": {"elo": 2212.228, "xi": 85.3, "squad": 82.8, "attack": 86.7, "defence": 84.2}, "Sweden": {"elo": 1889.368, "xi": 76.6, "squad": 75, "attack": 85.3, "defence": 76.8}, "Switzerland": {"elo": 1979.7345, "xi": 77.2, "squad": 75.6, "attack": 77.3, "defence": 78.8}, "Tunisia": {"elo": 1698.203, "xi": 71.6, "squad": 68.7, "attack": 70, "defence": 71.4}, "Türkiye": {"elo": 1875.0672, "xi": 79.3, "squad": 77.2, "attack": 80.3, "defence": 78.8}, "Uruguay": {"elo": 1919.062, "xi": 73.4, "squad": 75.4, "attack": 76, "defence": 79.8}, "USA": {"elo": 1965.5932, "xi": 76.8, "squad": 74.5, "attack": 79.3, "defence": 77.2}, "Uzbekistan": {"elo": 1688.0939, "xi": 67.5, "squad": 65.5, "attack": 67.3, "defence": 67.4}};
+
+// ── Match pricing model (ported from Soccer Model NoMacro.xlsm) ─────────
+// Combined Power blends Starting XI rating, live Elo, and Squad rating
+// (45/45/10 weight), converted onto the same Elo-like scale via a linear
+// fit (slope 30, intercept -460), exactly as the workbook's
+// 'ELO & FORM' and 'Match Pricing' sheets do.
+const MODEL_CONST = {
+  W_XI: 0.45, W_ELO: 0.45, W_SQUAD: 0.10,
+  XI_SLOPE: 30, XI_INTERCEPT: -460,
+  ELO_PER_GOAL: 180,
+  BASE_TOTAL_GOALS: 2.65,
+  HOME_ADV: 70,
+  ATTDEF_SENSITIVITY: 0.045,
+  LEAGUE_AVG_ATTACK: 77.3,
+  LEAGUE_AVG_DEFENCE: 76.1,
+  RHO: -0.08,
+  ELO_K: 60,
+};
+
+function combinedPower(team) {
+  const t = TEAM_MODEL_DATA[team];
+  if (!t) return null;
+  const pwrXi = MODEL_CONST.XI_SLOPE * t.xi + MODEL_CONST.XI_INTERCEPT;
+  const pwrSquad = MODEL_CONST.XI_SLOPE * t.squad + MODEL_CONST.XI_INTERCEPT;
+  const { W_XI, W_ELO, W_SQUAD } = MODEL_CONST;
+  return (W_XI * pwrXi + W_ELO * t.elo + W_SQUAD * pwrSquad) / (W_XI + W_ELO + W_SQUAD);
+}
+
+function poissonPmf(lambda, k) {
+  let factorial = 1;
+  for (let i = 2; i <= k; i++) factorial *= i;
+  return Math.exp(-lambda) * Math.pow(lambda, k) / factorial;
+}
+
+function dixonColesTau(i, j, lamA, lamB, rho) {
+  if (i === 0 && j === 0) return 1 - (lamA * lamB * rho);
+  if (i === 0 && j === 1) return 1 + (lamA * rho);
+  if (i === 1 && j === 0) return 1 + (lamB * rho);
+  if (i === 1 && j === 1) return 1 - rho;
+  return 1;
+}
+
+// Computes fair-odds model probabilities for every market this app tracks,
+// for a given home/away matchup. venue: "Neutral" | "A home" | "B home".
+function computeModelMarkets(teamA, teamB, venue) {
+  const a = TEAM_MODEL_DATA[teamA];
+  const b = TEAM_MODEL_DATA[teamB];
+  if (!a || !b) return null;
+
+  const cpA = combinedPower(teamA);
+  const cpB = combinedPower(teamB);
+  const homeAdjust = venue === "A home" ? MODEL_CONST.HOME_ADV : venue === "B home" ? -MODEL_CONST.HOME_ADV : 0;
+  const ratingDiff = cpA - cpB + homeAdjust;
+  const expSupremacy = ratingDiff / MODEL_CONST.ELO_PER_GOAL;
+
+  const goalsA = (MODEL_CONST.BASE_TOTAL_GOALS / 2) * Math.exp(MODEL_CONST.ATTDEF_SENSITIVITY * ((a.attack - MODEL_CONST.LEAGUE_AVG_ATTACK) + (MODEL_CONST.LEAGUE_AVG_DEFENCE - b.defence)));
+  const goalsB = (MODEL_CONST.BASE_TOTAL_GOALS / 2) * Math.exp(MODEL_CONST.ATTDEF_SENSITIVITY * ((b.attack - MODEL_CONST.LEAGUE_AVG_ATTACK) + (MODEL_CONST.LEAGUE_AVG_DEFENCE - a.defence)));
+  const modelTotal = goalsA + goalsB;
+
+  const lamA = Math.max(0.15, (modelTotal + expSupremacy) / 2);
+  const lamB = Math.max(0.15, (modelTotal - expSupremacy) / 2);
+
+  const MAX_GOALS = 9;
+  const pA = []; const pB = [];
+  for (let k = 0; k < MAX_GOALS; k++) { pA.push(poissonPmf(lamA, k)); pB.push(poissonPmf(lamB, k)); }
+
+  const grid = [];
+  let totalProb = 0;
+  for (let i = 0; i < MAX_GOALS; i++) {
+    grid.push([]);
+    for (let j = 0; j < MAX_GOALS; j++) {
+      const p = Math.max(0, pA[i] * pB[j] * dixonColesTau(i, j, lamA, lamB, MODEL_CONST.RHO));
+      grid[i].push(p);
+      totalProb += p;
+    }
+  }
+
+  let teamAWin = 0, draw = 0, teamBWin = 0, over15 = 0, over25 = 0, over35 = 0, btts = 0;
+  for (let i = 0; i < MAX_GOALS; i++) {
+    for (let j = 0; j < MAX_GOALS; j++) {
+      const p = grid[i][j] / totalProb;
+      if (i > j) teamAWin += p;
+      else if (i === j) draw += p;
+      else teamBWin += p;
+      if (i + j >= 2) over15 += p;
+      if (i + j >= 3) over25 += p;
+      if (i + j >= 4) over35 += p;
+      if (i >= 1 && j >= 1) btts += p;
+    }
+  }
+
+  const doubleChance1X = teamAWin + draw;
+  const doubleChance12 = teamAWin + teamBWin;
+  const doubleChanceX2 = draw + teamBWin;
+  const dnbA = (teamAWin + teamBWin) > 0 ? teamAWin / (teamAWin + teamBWin) : null;
+  const dnbB = (teamAWin + teamBWin) > 0 ? teamBWin / (teamAWin + teamBWin) : null;
+
+  const probToOdds = (p) => (p && p > 0) ? 1 / p : null;
+
+  return {
+    "Team A Win": probToOdds(teamAWin),
+    "Draw": probToOdds(draw),
+    "Team B Win": probToOdds(teamBWin),
+    "Over 1.5 Goals": probToOdds(over15),
+    "Over 2.5 Goals": probToOdds(over25),
+    "Over 3.5 Goals": probToOdds(over35),
+    "Under 2.5 Goals": probToOdds(1 - over25),
+    "BTTS Yes": probToOdds(btts),
+    "BTTS No": probToOdds(1 - btts),
+    "Double Chance 1X": probToOdds(doubleChance1X),
+    "Double Chance 12": probToOdds(doubleChance12),
+    "Double Chance X2": probToOdds(doubleChanceX2),
+    "Draw No Bet A": probToOdds(dnbA),
+    "Draw No Bet B": probToOdds(dnbB),
+  };
+}
+
+
 // ── Tier rules: edge band -> target win profit ──────────────────────────
 function getTier(edgePct) {
   if (edgePct >= 11) return { label: "11%+", target: 400, color: "var(--profit)" };
@@ -701,6 +820,7 @@ function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilte
 function AddBet({ markets, teams, onAdd, onNavigate }) {
   const [customHome, setCustomHome] = useState("");
   const [customAway, setCustomAway] = useState("");
+  const [venue, setVenue] = useState("Neutral");
   const [market, setMarket] = useState(markets[0]);
   const [myOdds, setMyOdds] = useState("");
   const [bookieOdds, setBookieOdds] = useState("");
@@ -710,6 +830,12 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
 
   const home = customHome;
   const away = customAway;
+
+  const modelMarkets = useMemo(() => {
+    if (!home || !away) return null;
+    return computeModelMarkets(home, away, venue);
+  }, [home, away, venue]);
+  const modelOdds = modelMarkets ? modelMarkets[market] : null;
 
   const calc = useMemo(() => calcStake(parseFloat(myOdds), parseFloat(bookieOdds)), [myOdds, bookieOdds]);
   const finalStake = useManualStake ? parseFloat(manualStake) || null : calc?.stake ?? null;
@@ -748,11 +874,35 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
         </Field>
       </div>
 
+      <Field label="Venue">
+        <select value={venue} onChange={e => setVenue(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
+          <option value="Neutral">Neutral</option>
+          <option value="A home">{home || "Home team"} is home</option>
+          <option value="B home">{away || "Away team"} is home</option>
+        </select>
+      </Field>
+
       <Field label="Market">
         <select value={market} onChange={e => setMarket(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
           {markets.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </Field>
+
+      {modelOdds !== null && modelOdds !== undefined && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "rgba(3,92,165,0.08)", border: "1px solid var(--accent-blue)", borderRadius: 10,
+          padding: "10px 14px", marginBottom: 14
+        }}>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>Model odds</div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 18, fontWeight: 700, color: "var(--accent-blue)" }}>{modelOdds.toFixed(2)}</div>
+          </div>
+          <button onClick={() => setMyOdds(modelOdds.toFixed(2))} style={btnStyle({ small: true, primary: true })}>
+            Use as My Odds
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8 }}>
         <Field label="My odds" style={{ flex: 1 }}>
