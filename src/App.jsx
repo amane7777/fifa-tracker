@@ -860,12 +860,13 @@ export default function App() {
       <div style={{
         position: "sticky", top: 0, zIndex: 10, background: "rgba(10,14,20,0.92)",
         backdropFilter: "blur(10px)", borderBottom: "1px solid var(--border)",
-        padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between"
+        padding: "calc(14px + env(safe-area-inset-top)) 16px 14px",
+        display: "flex", alignItems: "center", justifyContent: "space-between"
       }}>
-        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.01em" }}>
+        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>
           FIFA 26 <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Tracker</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {saveError ? (
             <span style={{ fontSize: 11, color: "var(--loss)", fontFamily: "var(--mono)" }}>sync failed</span>
           ) : saving ? (
@@ -890,23 +891,57 @@ export default function App() {
         borderTop: "1px solid var(--border)", display: "flex", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))"
       }}>
         {[
-          { id: "dashboard", label: "Dashboard", icon: "📊" },
-          { id: "log", label: "Bets", icon: "📋" },
-          { id: "add", label: "Add Bet", icon: "➕" },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column",
-            alignItems: "center", gap: 3, padding: "6px 0", cursor: "pointer",
-            color: tab === t.id ? "var(--accent-blue)" : "var(--text-muted)"
-          }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>{t.icon}</span>
-            <span style={{ fontSize: 10.5, fontWeight: tab === t.id ? 700 : 500 }}>{t.label}</span>
-          </button>
-        ))}
+          { id: "dashboard", label: "Dashboard", render: (color) => <SoccerBallIcon color={color} /> },
+          { id: "log", label: "Bets", render: () => <DollarIcon color="var(--profit)" /> },
+          { id: "add", label: "Add Bet", render: (color) => <PlusIcon color={color} /> },
+        ].map(t => {
+          const color = tab === t.id ? "var(--accent-blue)" : "var(--text-muted)";
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column",
+              alignItems: "center", gap: 3, padding: "6px 0", cursor: "pointer",
+              color
+            }}>
+              <span style={{ display: "flex", lineHeight: 1 }}>{t.render(color)}</span>
+              <span style={{ fontSize: 10.5, fontWeight: tab === t.id ? 700 : 500 }}>{t.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
+
+// ── Tab bar icons ─────────────────────────────────────────────────────────
+function SoccerBallIcon({ color }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.4">
+      <circle cx="12" cy="12" r="9.3" />
+      <path d="M12 7.2l3.6 2.6-1.4 4.2H9.8l-1.4-4.2z" fill={color} stroke="none" />
+      <path d="M12 7.2V3.4M15.6 9.8l3.6-1.2M14.2 14l2.3 3.4M9.8 14l-2.3 3.4M8.4 9.8l-3.6-1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function DollarIcon({ color }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+      <circle cx="12" cy="12" r="9.3" />
+      <path d="M12 6.5v11M15.2 9c0-1.4-1.4-2.3-3.2-2.3s-3.2.9-3.2 2.2c0 3 6.4 1.4 6.4 4.4 0 1.4-1.5 2.3-3.2 2.3s-3.4-1-3.4-2.4"
+        strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PlusIcon({ color }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
+      <circle cx="12" cy="12" r="9.3" />
+      <path d="M12 8v8M8 12h8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 
 // ── Market evaluation logic (auto W/L/P from scoreline) ──────────────────
 function evaluateMarket(market, hg, ag) {
