@@ -1029,6 +1029,7 @@ function AddBet({ markets, teams, lineups, onAdd, onNavigate }) {
   const [notes, setNotes] = useState("");
   const [manualStake, setManualStake] = useState("");
   const [useManualStake, setUseManualStake] = useState(false);
+  const [oddsCheck, setOddsCheck] = useState({ status: "idle", edges: [], creditsRemaining: null, error: null });
 
   const home = customHome;
   const away = customAway;
@@ -1051,6 +1052,26 @@ function AddBet({ markets, teams, lineups, onAdd, onNavigate }) {
   const modelOdds = modelMarkets ? modelMarkets[market] : null;
   const usingCustomLineupA = !!xiOverrideFor(home);
   const usingCustomLineupB = !!xiOverrideFor(away);
+
+  const checkBookieOdds = async () => {
+    if (!home || !away) return;
+    setOddsCheck({ status: "loading", edges: [], creditsRemaining: null, error: null });
+    try {
+      const res = await fetch("/api/odds");
+      if (!res.ok) throw new Error(`Odds check failed (${res.status})`);
+      const data = await res.json();
+      const match = findOddsMatch(home, away, data.matches);
+      if (!match) {
+        setOddsCheck({ status: "done", edges: [], creditsRemaining: data.creditsRemaining, error: "no_match" });
+        return;
+      }
+      const bookie = extractBookieOdds(home, away, match);
+      const edges = computeEdges(modelMarkets, bookie);
+      setOddsCheck({ status: "done", edges, creditsRemaining: data.creditsRemaining, error: null });
+    } catch (e) {
+      setOddsCheck({ status: "error", edges: [], creditsRemaining: null, error: e.message });
+    }
+  };
 
   const calc = useMemo(() => calcStake(parseFloat(myOdds), parseFloat(bookieOdds)), [myOdds, bookieOdds]);
   const finalStake = useManualStake ? parseFloat(manualStake) || null : calc?.stake ?? null;
@@ -1121,6 +1142,62 @@ function AddBet({ markets, teams, lineups, onAdd, onNavigate }) {
           <button onClick={() => setMyOdds(modelOdds.toFixed(2))} style={btnStyle({ small: true, primary: true })}>
             Use as My Odds
           </button>
+        </div>
+      )}
+
+      {home && away && (
+        <div style={{ marginBottom: 14 }}>
+          <button onClick={checkBookieOdds} disabled={oddsCheck.status === "loading"} style={{
+            ...btnStyle({ full: true }),
+            background: "var(--accent-yellow)", color: "#1a1500", border: "none", fontWeight: 700,
+            opacity: oddsCheck.status === "loading" ? 0.6 : 1
+          }}>
+            {oddsCheck.status === "loading" ? "Checking bookie odds…" : "Check bookie odds for edge"}
+          </button>
+
+          {oddsCheck.status === "error" && (
+            <div style={{ fontSize: 11.5, color: "var(--loss)", marginTop: 6 }}>
+              Couldn't check odds: {oddsCheck.error}
+            </div>
+          )}
+          {oddsCheck.status === "done" && oddsCheck.error === "no_match" && (
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>
+              No bookmaker odds found yet for this matchup.
+            </div>
+          )}
+          {oddsCheck.status === "done" && oddsCheck.edges.length > 0 && (
+            <div style={{ marginTop: 10, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+              {oddsCheck.edges.map((e, i) => {
+                const hasEdge = e.edgePct >= 4;
+                return (
+                  <button key={e.market} onClick={() => { setMarket(e.market); setBookieOdds(e.bookieOdds.toFixed(2)); setMyOdds(e.modelOdds.toFixed(2)); }}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                      background: hasEdge ? "rgba(249,216,1,0.12)" : "none", border: "none", cursor: "pointer", textAlign: "left",
+                      borderBottom: i < oddsCheck.edges.length - 1 ? "1px solid var(--border)" : "none"
+                    }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{e.market}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
+                        Model {e.modelOdds.toFixed(2)} · Bookie {e.bookieOdds.toFixed(2)}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontFamily: "var(--mono)", fontSize: 14, fontWeight: 700,
+                      color: hasEdge ? "#8A6D00" : e.edgePct > 0 ? "var(--profit)" : "var(--loss)"
+                    }}>
+                      {e.edgePct >= 0 ? "+" : ""}{e.edgePct.toFixed(1)}%
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {oddsCheck.creditsRemaining !== null && oddsCheck.status === "done" && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, textAlign: "right" }}>
+              {oddsCheck.creditsRemaining} odds API credits left this month
+            </div>
+          )}
         </div>
       )}
 
@@ -1627,3 +1704,64 @@ function findMatchForBet(bet, apiMatches) {
     return (sameOrder || swapped) && m.status === "FINISHED";
   }) || null;
 }
+
+// Finds the matching fixture from a the-odds-api.com response for a given
+// home/away pair, regardless of team order.
+function findOddsMatch(home, away, oddsMatches) {
+  if (!oddsMatches) return null;
+  return oddsMatches.find(m => {
+    const sameOrder = teamsMatch(home, m.home_team) && teamsMatch(away, m.away_team);
+    const swapped = teamsMatch(home, m.away_team) && teamsMatch(away, m.home_team);
+    return sameOrder || swapped;
+  }) || null;
+}
+
+// Extracts best-available bookie price per market this app tracks from a
+// the-odds-api.com fixture, taking the best (highest) price across bookmakers
+// for each outcome. Returns { marketName: bestOdds } similar to computeModelMarkets.
+function extractBookieOdds(home, away, oddsMatch) {
+  if (!oddsMatch) return {};
+  const flipped = !teamsMatch(home, oddsMatch.home_team);
+  const result = {};
+
+  oddsMatch.bookmakers?.forEach(bm => {
+    bm.markets?.forEach(market => {
+      if (market.key === "h2h") {
+        market.outcomes?.forEach(o => {
+          let label = null;
+          if (o.name === "Draw") label = "Draw";
+          else if (teamsMatch(o.name, flipped ? away : home)) label = "Team A Win";
+          else if (teamsMatch(o.name, flipped ? home : away)) label = "Team B Win";
+          if (label && (!result[label] || o.price > result[label])) result[label] = o.price;
+        });
+      }
+      if (market.key === "totals") {
+        market.outcomes?.forEach(o => {
+          if (o.point !== 2.5) return;
+          const label = o.name === "Over" ? "Over 2.5 Goals" : o.name === "Under" ? "Under 2.5 Goals" : null;
+          if (label && (!result[label] || o.price > result[label])) result[label] = o.price;
+        });
+      }
+    });
+  });
+  return result;
+}
+
+// Compares model probabilities against bookie odds for every market both
+// have, returning rows sorted by edge descending.
+function computeEdges(modelMarkets, bookieOdds) {
+  if (!modelMarkets || !bookieOdds) return [];
+  const rows = [];
+  Object.keys(bookieOdds).forEach(market => {
+    const modelOdds = modelMarkets[market];
+    const bookieOdd = bookieOdds[market];
+    if (!modelOdds || !bookieOdd) return;
+    const modelProb = 1 / modelOdds;
+    const bookieProb = 1 / bookieOdd;
+    const edgePct = (modelProb - bookieProb) * 100;
+    rows.push({ market, modelOdds, bookieOdds: bookieOdd, edgePct });
+  });
+  return rows.sort((a, b) => b.edgePct - a.edgePct);
+}
+
+
