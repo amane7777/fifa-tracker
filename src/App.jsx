@@ -5,6 +5,21 @@ const SEED_BETS = [{"match": "#1 Mexico vs South Africa", "matchNum": 1, "home":
 const MARKETS = ["Team A Win", "Draw", "Team B Win", "Over 1.5 Goals", "Over 2.5 Goals", "Over 3.5 Goals", "Under 2.5 Goals", "BTTS Yes", "BTTS No", "Double Chance 1X", "Double Chance 12", "Double Chance X2", "Draw No Bet A", "Draw No Bet B"];
 const TEAMS = ["Algeria", "Argentina", "Australia", "Austria", "Belgium", "Bosnia And Herzegovina", "Brazil", "Cabo Verde", "Canada", "Colombia", "Congo DR", "Croatia", "Curaçao", "Czechia", "Côte D'Ivoire", "Ecuador", "Egypt", "England", "France", "Germany", "Ghana", "Haiti", "IR Iran", "Iraq", "Japan", "Jordan", "Korea Republic", "Mexico", "Morocco", "Netherlands", "New Zealand", "Norway", "Panama", "Paraguay", "Portugal", "Qatar", "Saudi Arabia", "Scotland", "Senegal", "South Africa", "Spain", "Sweden", "Switzerland", "Tunisia", "Türkiye", "USA", "Uruguay", "Uzbekistan"];
 
+const TEAM_FLAGS = {
+  "Algeria": "🇩🇿", "Argentina": "🇦🇷", "Australia": "🇦🇺", "Austria": "🇦🇹",
+  "Belgium": "🇧🇪", "Bosnia And Herzegovina": "🇧🇦", "Brazil": "🇧🇷", "Cabo Verde": "🇨🇻",
+  "Canada": "🇨🇦", "Colombia": "🇨🇴", "Congo DR": "🇨🇩", "Croatia": "🇭🇷",
+  "Curaçao": "🇨🇼", "Czechia": "🇨🇿", "Côte D'Ivoire": "🇨🇮", "Ecuador": "🇪🇨",
+  "Egypt": "🇪🇬", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "France": "🇫🇷", "Germany": "🇩🇪",
+  "Ghana": "🇬🇭", "Haiti": "🇭🇹", "IR Iran": "🇮🇷", "Iraq": "🇮🇶",
+  "Japan": "🇯🇵", "Jordan": "🇯🇴", "Korea Republic": "🇰🇷", "Mexico": "🇲🇽",
+  "Morocco": "🇲🇦", "Netherlands": "🇳🇱", "New Zealand": "🇳🇿", "Norway": "🇳🇴",
+  "Panama": "🇵🇦", "Paraguay": "🇵🇾", "Portugal": "🇵🇹", "Qatar": "🇶🇦",
+  "Saudi Arabia": "🇸🇦", "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "Senegal": "🇸🇳", "South Africa": "🇿🇦",
+  "Spain": "🇪🇸", "Sweden": "🇸🇪", "Switzerland": "🇨🇭", "Tunisia": "🇹🇳",
+  "Türkiye": "🇹🇷", "USA": "🇺🇸", "Uruguay": "🇺🇾", "Uzbekistan": "🇺🇿",
+};
+
 
 // ── Tier rules: edge band -> target win profit ──────────────────────────
 function getTier(edgePct) {
@@ -273,6 +288,12 @@ function ResultBadge({ result }) {
 }
 
 // ── Bet row (log list) ───────────────────────────────────────────────────
+function betTitle(bet) {
+  if (bet.market === "Team A Win") return { text: `${bet.home} To Win`, flag: TEAM_FLAGS[bet.home] };
+  if (bet.market === "Team B Win") return { text: `${bet.away} To Win`, flag: TEAM_FLAGS[bet.away] };
+  return { text: bet.market, flag: null };
+}
+
 function BetRow({ bet, onUpdateResult, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [hg, setHg] = useState(bet.homeGoals ?? "");
@@ -289,6 +310,10 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
     }
   };
 
+  const title = betTitle(bet);
+  const isSettled = bet.result && bet.result !== "Pending";
+  const potentialWin = bet.stake && bet.bookieOdds ? bet.stake * (bet.bookieOdds - 1) : null;
+
   return (
     <div style={{
       background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10,
@@ -296,21 +321,27 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {bet.home} <span style={{ color: "var(--text-muted)" }}>vs</span> {bet.away}
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", display: "flex", alignItems: "center", gap: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {title.flag && <span style={{ fontSize: 14 }}>{title.flag}</span>}
+            <span>{title.text}</span>
+            <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>@ {bet.bookieOdds?.toFixed(2)}</span>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{bet.market}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+            {bet.home} <span>vs</span> {bet.away}
+          </div>
         </div>
         <ResultBadge result={bet.result} />
       </div>
 
-      <div style={{ display: "flex", gap: 16, marginTop: 10, fontFamily: "var(--mono)", fontSize: 12.5 }}>
-        <div><span style={{ color: "var(--text-muted)" }}>Odds </span>{bet.bookieOdds?.toFixed(2)}</div>
-        <div><span style={{ color: "var(--text-muted)" }}>Edge </span>{fmtPct(bet.edgePct, 1)}</div>
+      <div style={{ display: "flex", gap: 16, marginTop: 10, fontFamily: "var(--mono)", fontSize: 12.5, alignItems: "center" }}>
         <div><span style={{ color: "var(--text-muted)" }}>Stake </span>{fmtMoney(bet.stake, { dp: 0 })}</div>
-        <div style={{ marginLeft: "auto", fontWeight: 700, color: bet.pnl > 0 ? "var(--profit)" : bet.pnl < 0 ? "var(--loss)" : "var(--text-muted)" }}>
-          {bet.pnl === null || bet.pnl === undefined ? "—" : fmtMoney(bet.pnl, { dp: 0 })}
-        </div>
+        {!isSettled ? (
+          <div><span style={{ color: "var(--text-muted)" }}>Potential win </span><span style={{ color: "var(--profit)", fontWeight: 700 }}>{fmtMoney(potentialWin, { dp: 0 })}</span></div>
+        ) : (
+          <div style={{ marginLeft: "auto", fontWeight: 700, color: bet.pnl > 0 ? "var(--profit)" : bet.pnl < 0 ? "var(--loss)" : "var(--text-muted)" }}>
+            {bet.pnl === null || bet.pnl === undefined ? "—" : fmtMoney(bet.pnl, { dp: 0 })}
+          </div>
+        )}
       </div>
 
       {bet.notes && (
@@ -646,9 +677,7 @@ function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilte
 }
 
 // ── Add bet form ──────────────────────────────────────────────────────────
-function AddBet({ matches, markets, teams, onAdd, onNavigate }) {
-  const [matchMode, setMatchMode] = useState("select");
-  const [matchNum, setMatchNum] = useState("");
+function AddBet({ markets, teams, onAdd, onNavigate }) {
   const [customHome, setCustomHome] = useState("");
   const [customAway, setCustomAway] = useState("");
   const [market, setMarket] = useState(markets[0]);
@@ -658,9 +687,8 @@ function AddBet({ matches, markets, teams, onAdd, onNavigate }) {
   const [manualStake, setManualStake] = useState("");
   const [useManualStake, setUseManualStake] = useState(false);
 
-  const selectedMatch = matches.find(m => String(m.num) === String(matchNum));
-  const home = matchMode === "select" ? selectedMatch?.home : customHome;
-  const away = matchMode === "select" ? selectedMatch?.away : customAway;
+  const home = customHome;
+  const away = customAway;
 
   const calc = useMemo(() => calcStake(parseFloat(myOdds), parseFloat(bookieOdds)), [myOdds, bookieOdds]);
   const finalStake = useManualStake ? parseFloat(manualStake) || null : calc?.stake ?? null;
@@ -670,60 +698,34 @@ function AddBet({ matches, markets, teams, onAdd, onNavigate }) {
   const save = () => {
     onAdd({
       home, away, market,
-      matchNum: matchMode === "select" ? selectedMatch?.num : null,
+      matchNum: null,
       myOdds: parseFloat(myOdds), bookieOdds: parseFloat(bookieOdds),
       edgePct: calc?.edgePct ?? null,
       stake: finalStake,
       notes: notes.trim() || null,
       homeGoals: null, awayGoals: null, result: "Pending", pnl: null,
     });
-    setMatchNum(""); setCustomHome(""); setCustomAway("");
+    setCustomHome(""); setCustomAway("");
     setMyOdds(""); setBookieOdds(""); setNotes(""); setManualStake(""); setUseManualStake(false);
     onNavigate("log");
   };
 
   return (
     <div style={{ padding: "16px 16px 100px" }}>
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        <button onClick={() => setMatchMode("select")} style={{
-          ...btnStyle({ small: true }), flex: 1,
-          background: matchMode === "select" ? "var(--accent-blue)" : "var(--bg-panel-2)",
-          color: matchMode === "select" ? "#FFFFFF" : "var(--text-muted)",
-          border: matchMode === "select" ? "none" : "1px solid var(--border)"
-        }}>From schedule</button>
-        <button onClick={() => setMatchMode("custom")} style={{
-          ...btnStyle({ small: true }), flex: 1,
-          background: matchMode === "custom" ? "var(--accent-blue)" : "var(--bg-panel-2)",
-          color: matchMode === "custom" ? "#FFFFFF" : "var(--text-muted)",
-          border: matchMode === "custom" ? "none" : "1px solid var(--border)"
-        }}>Type match</button>
-      </div>
-
-      {matchMode === "select" ? (
-        <Field label="Match">
-          <select value={matchNum} onChange={e => setMatchNum(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
-            <option value="">Select a match…</option>
-            {matches.map(m => (
-              <option key={m.num} value={m.num}>#{m.num} ({m.group}) {m.home} vs {m.away}</option>
-            ))}
+      <div style={{ display: "flex", gap: 8 }}>
+        <Field label="Home team" style={{ flex: 1 }}>
+          <select value={customHome} onChange={e => setCustomHome(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
+            <option value="">Select…</option>
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </Field>
-      ) : (
-        <div style={{ display: "flex", gap: 8 }}>
-          <Field label="Home team" style={{ flex: 1 }}>
-            <select value={customHome} onChange={e => setCustomHome(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
-              <option value="">Select…</option>
-              {teams.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Field>
-          <Field label="Away team" style={{ flex: 1 }}>
-            <select value={customAway} onChange={e => setCustomAway(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
-              <option value="">Select…</option>
-              {teams.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </Field>
-        </div>
-      )}
+        <Field label="Away team" style={{ flex: 1 }}>
+          <select value={customAway} onChange={e => setCustomAway(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
+            <option value="">Select…</option>
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Field>
+      </div>
 
       <Field label="Market">
         <select value={market} onChange={e => setMarket(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
@@ -1061,7 +1063,7 @@ export default function App() {
 
       {tab === "dashboard" && <Dashboard bets={bets} onSelectMarket={(market) => { setMarketFilter(market); setTab("log"); }} />}
       {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} filter={logFilter} setFilter={setLogFilter} marketFilter={marketFilter} setMarketFilter={setMarketFilter} onCheckScores={checkLiveScores} scoreCheckState={scoreCheckState} onApplyScore={applyScoreSuggestion} />}
-      {tab === "add" && <AddBet matches={SEED_MATCHES} markets={MARKETS} teams={TEAMS} onAdd={addBet} onNavigate={setTab} />}
+      {tab === "add" && <AddBet markets={MARKETS} teams={TEAMS} onAdd={addBet} onNavigate={setTab} />}
 
       <div style={{
         position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
