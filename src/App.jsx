@@ -9,7 +9,7 @@ const MARKETS = ["Team A Win", "Draw", "Team B Win", "Over 1.5 Goals", "Over 2.5
 function getTier(edgePct) {
   if (edgePct >= 11) return { label: "11%+", target: 400, color: "var(--profit)" };
   if (edgePct >= 7) return { label: "7–10.9%", target: 200, color: "#ffb800" };
-  if (edgePct >= 4) return { label: "4–6.9%", target: 100, color: "#5b9bff" };
+  if (edgePct >= 4) return { label: "4–6.9%", target: 100, color: "#035CA5" };
   return null;
 }
 
@@ -194,7 +194,7 @@ function CumulativeChart({ bets }) {
 // ── Edge meter (signature element) ───────────────────────────────────────
 function EdgeMeter({ edgePct }) {
   const tiers = [
-    { min: 4, max: 6.9, target: 100, color: "#5b9bff" },
+    { min: 4, max: 6.9, target: 100, color: "#035CA5" },
     { min: 7, max: 10.9, target: 200, color: "#ffb800" },
     { min: 11, max: 20, target: 400, color: "var(--profit)" },
   ];
@@ -255,10 +255,10 @@ function StatCard({ label, value, sub, accent }) {
 
 function ResultBadge({ result }) {
   const map = {
-    W: { bg: "rgba(0,217,163,0.14)", color: "var(--profit)", label: "W" },
-    L: { bg: "rgba(255,77,106,0.14)", color: "var(--loss)", label: "L" },
-    P: { bg: "rgba(107,119,133,0.18)", color: "var(--text-muted)", label: "P" },
-    Pending: { bg: "rgba(255,184,0,0.14)", color: "#ffb800", label: "PEND" },
+    W: { bg: "rgba(26,162,96,0.12)", color: "var(--profit)", label: "W" },
+    L: { bg: "rgba(224,57,46,0.12)", color: "var(--loss)", label: "L" },
+    P: { bg: "rgba(92,122,147,0.14)", color: "var(--text-muted)", label: "P" },
+    Pending: { bg: "rgba(249,216,1,0.22)", color: "#8A6D00", label: "PEND" },
   };
   const s = map[result] || map.Pending;
   return (
@@ -357,7 +357,7 @@ function inputStyle(extra = {}) {
 function btnStyle({ primary, small, full, danger } = {}) {
   return {
     background: primary ? "var(--accent-blue)" : danger ? "rgba(255,77,106,0.12)" : "var(--bg-panel-2)",
-    color: primary ? "#0a0e14" : danger ? "var(--loss)" : "var(--text)",
+    color: primary ? "#FFFFFF" : danger ? "var(--loss)" : "var(--text)",
     border: primary ? "none" : "1px solid var(--border)",
     borderRadius: 8, cursor: "pointer", fontFamily: "var(--ui)", fontWeight: 600,
     padding: small ? "6px 10px" : "11px 14px", fontSize: small ? 12 : 14,
@@ -488,7 +488,7 @@ function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter }) {
           <button key={f} onClick={() => setFilter(f)} style={{
             ...btnStyle({ small: true }),
             background: filter === f ? "var(--accent-blue)" : "var(--bg-panel-2)",
-            color: filter === f ? "#0a0e14" : "var(--text-muted)",
+            color: filter === f ? "#FFFFFF" : "var(--text-muted)",
             border: filter === f ? "none" : "1px solid var(--border)",
             textTransform: "capitalize"
           }}>
@@ -550,13 +550,13 @@ function AddBet({ matches, markets, onAdd, onNavigate }) {
         <button onClick={() => setMatchMode("select")} style={{
           ...btnStyle({ small: true }), flex: 1,
           background: matchMode === "select" ? "var(--accent-blue)" : "var(--bg-panel-2)",
-          color: matchMode === "select" ? "#0a0e14" : "var(--text-muted)",
+          color: matchMode === "select" ? "#FFFFFF" : "var(--text-muted)",
           border: matchMode === "select" ? "none" : "1px solid var(--border)"
         }}>From schedule</button>
         <button onClick={() => setMatchMode("custom")} style={{
           ...btnStyle({ small: true }), flex: 1,
           background: matchMode === "custom" ? "var(--accent-blue)" : "var(--bg-panel-2)",
-          color: matchMode === "custom" ? "#0a0e14" : "var(--text-muted)",
+          color: matchMode === "custom" ? "#FFFFFF" : "var(--text-muted)",
           border: matchMode === "custom" ? "none" : "1px solid var(--border)"
         }}>Type match</button>
       </div>
@@ -828,7 +828,7 @@ export default function App() {
   if (!loaded) {
     return (
       <div style={{
-        "--bg": "#0a0e14", "--text-muted": "#6b7785",
+        "--bg": "#F4F7FA", "--text-muted": "#5C7A93",
         background: "var(--bg)", minHeight: "100vh", display: "flex",
         alignItems: "center", justifyContent: "center", color: "var(--text-muted)",
         fontFamily: "'Inter', -apple-system, sans-serif", fontSize: 13
@@ -840,9 +840,10 @@ export default function App() {
 
   return (
     <div style={{
-      "--bg": "#0a0e14", "--bg-panel": "#121823", "--bg-panel-2": "#1a222e",
-      "--border": "#1f2937", "--text": "#e8ecf1", "--text-dim": "#aab4c0", "--text-muted": "#6b7785",
-      "--profit": "#00d9a3", "--loss": "#ff4d6a", "--accent-blue": "#5b9bff",
+      "--bg": "#F4F7FA", "--bg-panel": "#FFFFFF", "--bg-panel-2": "#EAF1F7",
+      "--border": "#D7E3EC", "--border-strong": "#B8CCDC",
+      "--text": "#0A375C", "--text-dim": "#3A6385", "--text-muted": "#5C7A93",
+      "--profit": "#1AA260", "--loss": "#E0392E", "--accent-blue": "#035CA5", "--accent-yellow": "#F9D801",
       "--mono": "'JetBrains Mono', 'SF Mono', monospace", "--ui": "'Inter', -apple-system, sans-serif",
       background: "var(--bg)", color: "var(--text)", minHeight: "100vh",
       fontFamily: "var(--ui)", maxWidth: 480, margin: "0 auto", position: "relative",
@@ -850,7 +851,7 @@ export default function App() {
     }}>
       <style>{`
         * { box-sizing: border-box; }
-        input::placeholder { color: #4a5462; }
+        input::placeholder { color: #93A9BB; }
         select { -webkit-appearance: none; appearance: none; }
         input:focus, select:focus { border-color: var(--accent-blue) !important; }
         button { font-family: var(--ui); }
@@ -858,24 +859,24 @@ export default function App() {
       `}</style>
 
       <div style={{
-        position: "sticky", top: 0, zIndex: 10, background: "rgba(10,14,20,0.92)",
-        backdropFilter: "blur(10px)", borderBottom: "1px solid var(--border)",
+        position: "sticky", top: 0, zIndex: 10, background: "var(--accent-blue)",
+        borderBottom: "1px solid var(--border-strong)",
         padding: "calc(14px + env(safe-area-inset-top)) 16px 14px",
         display: "flex", alignItems: "center", justifyContent: "space-between"
       }}>
-        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>
-          FIFA 26 <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Tracker</span>
+        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.01em", whiteSpace: "nowrap", color: "#FFFFFF" }}>
+          FIFA 26 <span style={{ color: "rgba(255,255,255,0.7)", fontWeight: 500 }}>Tracker</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {saveError ? (
-            <span style={{ fontSize: 11, color: "var(--loss)", fontFamily: "var(--mono)" }}>sync failed</span>
+            <span style={{ fontSize: 11, color: "#FFD9D5", fontFamily: "var(--mono)" }}>sync failed</span>
           ) : saving ? (
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>syncing…</span>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", fontFamily: "var(--mono)" }}>syncing…</span>
           ) : (
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--profit)", boxShadow: "0 0 6px var(--profit)" }} title="Synced" />
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent-yellow)", boxShadow: "0 0 6px var(--accent-yellow)" }} title="Synced" />
           )}
           <button onClick={resetToSeed}
-            style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "var(--ui)" }}>
+            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.75)", fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "var(--ui)" }}>
             Reset
           </button>
         </div>
@@ -887,8 +888,9 @@ export default function App() {
 
       <div style={{
         position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
-        width: "100%", maxWidth: 480, background: "rgba(10,14,20,0.95)", backdropFilter: "blur(10px)",
-        borderTop: "1px solid var(--border)", display: "flex", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))"
+        width: "100%", maxWidth: 480, background: "#FFFFFF",
+        borderTop: "1px solid var(--border)", display: "flex", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
+        boxShadow: "0 -2px 12px rgba(10,55,92,0.08)"
       }}>
         {[
           { id: "dashboard", label: "Dashboard", render: (color) => <SoccerBallIcon color={color} /> },

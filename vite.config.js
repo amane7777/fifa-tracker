@@ -11,8 +11,8 @@ export default defineConfig({
         name: "FIFA 26 Tracker",
         short_name: "FIFA Tracker",
         description: "Personal FIFA World Cup betting tracker",
-        theme_color: "#0a0e14",
-        background_color: "#0a0e14",
+        theme_color: "#035CA5",
+        background_color: "#F4F7FA",
         display: "standalone",
         orientation: "portrait",
         icons: [
