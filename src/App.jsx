@@ -348,7 +348,7 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
             <span>{title.text}</span>
             <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>@ {bet.bookieOdds?.toFixed(2)}</span>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: "#0066FF", marginTop: 2 }}>
             {displayTeam(bet.home)} <span>vs</span> {displayTeam(bet.away)}
           </div>
         </div>
