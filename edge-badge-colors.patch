@@ -1,0 +1,85 @@
+From 4cede0f5f5bd47838abc32250259747663ed733e Mon Sep 17 00:00:00 2001
+From: amane7777 <advait.mane7@gmail.com>
+Date: Wed, 1 Jul 2026 14:10:42 +0000
+Subject: [PATCH] Show edge % badge on each bet with tiered colours (11%+
+ bright green); add .gitignore
+
+---
+ .gitignore  |  3 +++
+ src/App.jsx | 31 +++++++++++++++++++++++++++++--
+ 2 files changed, 32 insertions(+), 2 deletions(-)
+ create mode 100644 .gitignore
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..3bdd52e
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,3 @@
++node_modules/
++dist/
++.DS_Store
+diff --git a/src/App.jsx b/src/App.jsx
+index 7d7d4c8..209e730 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -45,12 +45,29 @@ function displayTeam(name) {
+ }
+ // ── Tier rules: edge band -> target win profit ──────────────────────────
+ function getTier(edgePct) {
+-  if (edgePct >= 11) return { label: "11%+", target: 400, color: "var(--profit)" };
++  if (edgePct >= 11) return { label: "11%+", target: 400, color: "#00E676" };
+   if (edgePct >= 7) return { label: "7–10.9%", target: 200, color: "#ffb800" };
+   if (edgePct >= 4) return { label: "4–6.9%", target: 100, color: "#035CA5" };
+   return null;
+ }
+ 
++// Edge colour/background for display purposes, including sub-4% and negative edges
++// (getTier returns null below 4%, but we still want a colour to show on bets).
++function edgeStyle(edgePct) {
++  if (edgePct === null || edgePct === undefined) {
++    return { color: "var(--text-muted)", bg: "rgba(92,122,147,0.12)", border: "rgba(92,122,147,0.25)" };
++  }
++  const tier = getTier(edgePct);
++  if (tier) {
++    // tier.color is always a hex value for 4%+ bands
++    return { color: tier.color, bg: `${tier.color}1F`, border: `${tier.color}55` };
++  }
++  if (edgePct > 0) {
++    return { color: "var(--text-muted)", bg: "rgba(92,122,147,0.12)", border: "rgba(92,122,147,0.25)" };
++  }
++  return { color: "var(--loss)", bg: "rgba(224,57,46,0.12)", border: "rgba(224,57,46,0.3)" };
++}
++
+ function calcStake(myOdds, bookieOdds) {
+   if (!myOdds || !bookieOdds || myOdds <= 0 || bookieOdds <= 0) return null;
+   const myProb = 1 / myOdds;
+@@ -234,7 +251,7 @@ function EdgeMeter({ edgePct }) {
+   const tiers = [
+     { min: 4, max: 6.9, target: 100, color: "#035CA5" },
+     { min: 7, max: 10.9, target: 200, color: "#ffb800" },
+-    { min: 11, max: 20, target: 400, color: "var(--profit)" },
++    { min: 11, max: 20, target: 400, color: "#00E676" },
+   ];
+   const clamped = edgePct === null ? 0 : Math.max(0, Math.min(edgePct, 20));
+   const pct = (clamped / 20) * 100;
+@@ -348,6 +365,16 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
+             <span>{title.text}</span>
+             <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>@ {bet.bookieOdds?.toFixed(2)}</span>
+           </div>
++          {bet.edgePct !== null && bet.edgePct !== undefined && (
++            <div style={{
++              display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4,
++              padding: "1px 7px", borderRadius: 20, fontFamily: "var(--mono)",
++              fontSize: 11, fontWeight: 700, color: edgeStyle(bet.edgePct).color,
++              background: edgeStyle(bet.edgePct).bg, border: `1px solid ${edgeStyle(bet.edgePct).border}`
++            }}>
++              Edge {bet.edgePct > 0 ? "+" : ""}{bet.edgePct.toFixed(1)}%
++            </div>
++          )}
+           <div style={{ fontSize: 12, color: "#0066FF", marginTop: 2 }}>
+             {displayTeam(bet.home)} <span>vs</span> {displayTeam(bet.away)}
+           </div>
+-- 
+2.43.0
+
