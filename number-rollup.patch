@@ -1,0 +1,97 @@
+From 265da58d00a375b71aa7ac94c762eb0cf9a816ad Mon Sep 17 00:00:00 2001
+From: amane7777 <advait.mane7@gmail.com>
+Date: Wed, 1 Jul 2026 15:31:58 +0000
+Subject: [PATCH] Add number roll-up animation to P&L, ROI, win rate, and key
+ stats
+
+---
+ src/App.jsx | 50 ++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 42 insertions(+), 8 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 868dfa3..312c01c 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -511,6 +511,40 @@ function FilterSelect({ value, onChange, options }) {
+   );
+ }
+ 
++// Rolls a number from its previous value to a new one whenever `value`
++// changes, easing over ~700ms. `format` renders the interpolated number.
++function AnimatedNumber({ value, format, duration = 700 }) {
++  const [display, setDisplay] = useState(value);
++  const fromRef = React.useRef(value);
++  const rafRef = React.useRef(null);
++
++  React.useEffect(() => {
++    const from = fromRef.current;
++    const to = value;
++    if (from === to || Number.isNaN(from) || Number.isNaN(to)) {
++      setDisplay(to);
++      fromRef.current = to;
++      return;
++    }
++    const start = performance.now();
++    const tick = (now) => {
++      const t = Math.min(1, (now - start) / duration);
++      // easeOutCubic — fast start, gentle settle, reads as a natural roll-up.
++      const eased = 1 - Math.pow(1 - t, 3);
++      setDisplay(from + (to - from) * eased);
++      if (t < 1) {
++        rafRef.current = requestAnimationFrame(tick);
++      } else {
++        fromRef.current = to;
++      }
++    };
++    rafRef.current = requestAnimationFrame(tick);
++    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
++  }, [value, duration]);
++
++  return <>{format(display)}</>;
++}
++
+ function StatCard({ label, value, sub, accent }) {
+   return (
+     <div style={{
+@@ -836,11 +870,11 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+             fontFamily: "var(--mono)", fontSize: 38, fontWeight: 700, marginTop: 4,
+             color: isProfit ? "var(--profit)" : "var(--loss)"
+           }}>
+-            {fmtMoney(stats.totalPnl, { dp: 0 })}
++            <AnimatedNumber value={stats.totalPnl} format={v => fmtMoney(v, { dp: 0 })} />
+           </div>
+           <div style={{ display: "flex", gap: 14, marginTop: 4, fontSize: 12.5, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
+-            <span>ROI <b style={{ color: isProfit ? "var(--profit)" : "var(--loss)" }}>{fmtPct(stats.roi, 1)}</b></span>
+-            <span>Win rate <b style={{ color: "var(--text)" }}>{fmtPct(stats.winRate, 1)}</b></span>
++            <span>ROI <b style={{ color: isProfit ? "var(--profit)" : "var(--loss)" }}><AnimatedNumber value={stats.roi} format={v => fmtPct(v, 1)} /></b></span>
++            <span>Win rate <b style={{ color: "var(--text)" }}><AnimatedNumber value={stats.winRate} format={v => fmtPct(v, 1)} /></b></span>
+           </div>
+         </div>
+         <button onClick={() => exportBetsToCSV(filteredBets)} style={{
+@@ -875,9 +909,9 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+           </div>
+           <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+             <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 13 }}>
+-              <div><span style={{ color: "var(--text-muted)" }}>Exposure </span><b>{fmtMoney(openPositions.exposure, { dp: 0 })}</b></div>
+-              <div><span style={{ color: "var(--text-muted)" }}>Best </span><b style={{ color: "var(--profit)" }}>+{fmtMoney(openPositions.bestCase, { dp: 0 })}</b></div>
+-              <div><span style={{ color: "var(--text-muted)" }}>Worst </span><b style={{ color: "var(--loss)" }}>{fmtMoney(openPositions.worstCase, { dp: 0 })}</b></div>
++              <div><span style={{ color: "var(--text-muted)" }}>Exposure </span><b><AnimatedNumber value={openPositions.exposure} format={v => fmtMoney(v, { dp: 0 })} /></b></div>
++              <div><span style={{ color: "var(--text-muted)" }}>Best </span><b style={{ color: "var(--profit)" }}>+<AnimatedNumber value={openPositions.bestCase} format={v => fmtMoney(v, { dp: 0 })} /></b></div>
++              <div><span style={{ color: "var(--text-muted)" }}>Worst </span><b style={{ color: "var(--loss)" }}><AnimatedNumber value={openPositions.worstCase} format={v => fmtMoney(v, { dp: 0 })} /></b></div>
+             </div>
+             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+               {openPositions.list.slice(0, 6).map(b => (
+@@ -898,8 +932,8 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+ 
+       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "12px 16px" }}>
+         <StatCard label="Record" value={`${stats.wins}-${stats.losses}-${stats.pushes}`} sub={`${stats.pendingCount} pending`} />
+-        <StatCard label="Total staked" value={fmtMoney(stats.totalStaked, { dp: 0 })} sub={stats.pendingStaked > 0 ? `${fmtMoney(stats.pendingStaked, { dp: 0 })} pending` : null} />
+-        <StatCard label="Avg edge" value={fmtPct(stats.avgEdge, 2)} />
++        <StatCard label="Total staked" value={<AnimatedNumber value={stats.totalStaked} format={v => fmtMoney(v, { dp: 0 })} />} sub={stats.pendingStaked > 0 ? `${fmtMoney(stats.pendingStaked, { dp: 0 })} pending` : null} />
++        <StatCard label="Avg edge" value={<AnimatedNumber value={stats.avgEdge} format={v => fmtPct(v, 2)} />} />
+         <StatCard label="Avg odds (W / L)" value={`${stats.avgWinOdds.toFixed(2)} / ${stats.avgLossOdds.toFixed(2)}`} />
+       </div>
+ 
+-- 
+2.43.0
+
