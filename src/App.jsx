@@ -225,6 +225,28 @@ function betVariance(bet) {
   return p * (1 - p) * swing * swing;
 }
 
+// Converts an array of already-screen-scaled {x,y} points into a smooth
+// SVG path using Catmull-Rom-to-Bezier interpolation (a gentle curve through
+// every point rather than sharp straight segments).
+function smoothPath(pts) {
+  if (pts.length === 0) return "";
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  if (pts.length === 2) return `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)} L ${pts[1].x.toFixed(2)} ${pts[1].y.toFixed(2)}`;
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
 function CumulativeChart({ bets, animateKey, stakingCurve, flatFinal, tieredFinal }) {
   const [showFlat, setShowFlat] = useState(false);
   const { actualPts, expectedPts, sdPts } = useMemo(() => {
@@ -247,24 +269,10 @@ function CumulativeChart({ bets, animateKey, stakingCurve, flatFinal, tieredFina
     return { actualPts: aPts, expectedPts: ePts, sdPts: sPts };
   }, [bets]);
 
-  // Animation: draw the actual line + sweep the pulsing dot across on mount /
-  // whenever animateKey changes (i.e. each time the dashboard is opened).
+  const pathRef = React.useRef(null);
   const [progress, setProgress] = React.useState(0);
-  React.useEffect(() => {
-    setProgress(0);
-    let raf;
-    const DURATION = 1100;
-    const start = performance.now();
-    const tick = (now) => {
-      const t = Math.min(1, (now - start) / DURATION);
-      // easeInOutCubic for a smooth accelerate/decelerate feel
-      const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      setProgress(eased);
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [animateKey]);
+  const [pathLen, setPathLen] = React.useState(2000); // sentinel: hides the line until measured
+  const [dotPos, setDotPos] = React.useState(null);
 
   if (actualPts.length < 2) {
     return (
@@ -274,8 +282,8 @@ function CumulativeChart({ bets, animateKey, stakingCurve, flatFinal, tieredFina
     );
   }
 
-  const w = 700, h = 190;
-  const padTop = 10, padBottom = 22, padLeft = 54;
+  const w = 700, h = 220;
+  const padTop = 14, padBottom = 24, padLeft = 54;
 
   // Upper/lower ±1 SD band points around the expected curve.
   const upperPts = expectedPts.map((p, i) => ({ x: p.x, y: p.y + sdPts[i].sd }));
@@ -292,7 +300,7 @@ function CumulativeChart({ bets, animateKey, stakingCurve, flatFinal, tieredFina
   const maxY = Math.ceil(rawMax / step) * step;
   const range = (maxY - minY) || 1;
 
-  const plotW = w - padLeft - 10;
+  const plotW = w - padLeft - 14;
   const plotH = h - padTop - padBottom;
   const xScale = (x) => padLeft + (x / (actualPts.length - 1)) * plotW;
   const yScale = (y) => padTop + plotH - ((y - minY) / range) * plotH;
@@ -301,47 +309,61 @@ function CumulativeChart({ bets, animateKey, stakingCurve, flatFinal, tieredFina
   const gridLines = [];
   for (let v = minY; v <= maxY + 1e-6; v += step) gridLines.push(v);
 
-  const buildPath = (pts) => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(" ");
-  const actualPath = buildPath(actualPts);
-  const expectedPath = buildPath(expectedPts);
+  const toScreen = (pts) => pts.map(p => ({ x: xScale(p.x), y: yScale(p.y) }));
+  const actualScreen = toScreen(actualPts);
+  const actualPath = smoothPath(actualScreen);
+  const expectedPath = smoothPath(toScreen(expectedPts));
 
   // Filled variance band between upper and lower (upper forward, lower back).
-  const bandPath =
-    buildPath(upperPts) + " " +
-    lowerPts.slice().reverse().map(p => `L ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(" ") + " Z";
+  const upperScreen = toScreen(upperPts);
+  const lowerScreen = toScreen(lowerPts);
+  const bandPath = smoothPath(upperScreen) + " L " + lowerScreen.slice().reverse().map(p => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" L ") + " Z";
 
   const lastActual = actualPts[actualPts.length - 1];
   const lastExpected = expectedPts[expectedPts.length - 1];
   const isProfit = lastActual.y >= 0;
   const lineColor = isProfit ? "var(--profit)" : "var(--loss)";
-  const areaPath = `${actualPath} L ${xScale(lastActual.x).toFixed(1)} ${zeroY.toFixed(1)} L ${xScale(0).toFixed(1)} ${zeroY.toFixed(1)} Z`;
+  const lastScreen = actualScreen[actualScreen.length - 1];
+  const areaPath = `${actualPath} L ${lastScreen.x.toFixed(2)} ${zeroY.toFixed(2)} L ${actualScreen[0].x.toFixed(2)} ${zeroY.toFixed(2)} Z`;
 
-  // Total length of the actual polyline (in px) so we can animate a stroke draw.
-  let totalLen = 0;
-  for (let i = 1; i < actualPts.length; i++) {
-    const dx = xScale(actualPts[i].x) - xScale(actualPts[i - 1].x);
-    const dy = yScale(actualPts[i].y) - yScale(actualPts[i - 1].y);
-    totalLen += Math.hypot(dx, dy);
-  }
-
-  // Interpolated position of the moving pulse dot along the actual line.
-  const dotAt = (frac) => {
-    const target = frac * totalLen;
-    let acc = 0;
-    for (let i = 1; i < actualPts.length; i++) {
-      const x0 = xScale(actualPts[i - 1].x), y0 = yScale(actualPts[i - 1].y);
-      const x1 = xScale(actualPts[i].x), y1 = yScale(actualPts[i].y);
-      const segLen = Math.hypot(x1 - x0, y1 - y0);
-      if (acc + segLen >= target) {
-        const r = segLen === 0 ? 0 : (target - acc) / segLen;
-        return { x: x0 + (x1 - x0) * r, y: y0 + (y1 - y0) * r };
+  // Animation: measure the real (curved) path length via the DOM, then draw
+  // it in with an ease-out sweep and slide the pulsing dot along the exact
+  // curve geometry (getPointAtLength) rather than an approximated straight line.
+  React.useEffect(() => {
+    setProgress(0);
+    const el = pathRef.current;
+    const total = el ? el.getTotalLength() : 0;
+    setPathLen(total);
+    let raf;
+    const DURATION = 2200;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / DURATION);
+      // easeOutCubic — confident start, gentle glide to a stop.
+      const eased = 1 - Math.pow(1 - t, 3);
+      setProgress(eased);
+      if (el && total > 0) {
+        const pt = el.getPointAtLength(eased * total);
+        setDotPos({ x: pt.x, y: pt.y });
       }
-      acc += segLen;
-    }
-    return { x: xScale(lastActual.x), y: yScale(lastActual.y) };
-  };
-  const dot = dotAt(progress);
-  const dashOffset = totalLen * (1 - progress);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animateKey, actualPath]);
+
+  const dot = dotPos || { x: lastScreen.x, y: lastScreen.y };
+  const dashOffset = pathLen * (1 - progress);
+
+  // Approximate running value under the leading dot, for the floating label
+  // shown while the line is still drawing in.
+  const idx = progress * (actualPts.length - 1);
+  const i0 = Math.floor(idx);
+  const frac = idx - i0;
+  const i1 = Math.min(i0 + 1, actualPts.length - 1);
+  const liveValue = actualPts[i0].y + (actualPts[i1].y - actualPts[i0].y) * frac;
+  const labelX = Math.max(padLeft + 34, Math.min(w - 34, dot.x));
 
   // Flat-stake counterfactual overlay. stakingCurve is indexed over settled
   // bets; map its x across the full plot width and reuse the P&L yScale, clamped
@@ -351,50 +373,74 @@ function CumulativeChart({ bets, animateKey, stakingCurve, flatFinal, tieredFina
     const n = stakingCurve.length - 1;
     const fx = (i) => padLeft + (i / n) * plotW;
     const clampY = (y) => Math.max(padTop, Math.min(padTop + plotH, yScale(y)));
-    flatPath = stakingCurve.map((p, i) => `${i === 0 ? "M" : "L"} ${fx(i).toFixed(1)} ${clampY(p.flat).toFixed(1)}`).join(" ");
+    flatPath = smoothPath(stakingCurve.map((p, i) => ({ x: fx(i), y: clampY(p.flat) })));
   }
 
   return (
     <div>
-      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 180, display: "block" }} preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 210, display: "block", overflow: "visible" }} preserveAspectRatio="none">
         <defs>
           <radialGradient id="pulseGrad">
             <stop offset="0%" stopColor={lineColor} stopOpacity="0.55" />
             <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
           </radialGradient>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.32" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+          </linearGradient>
+          <filter id="lineGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="2.2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
+        {/* Quiet horizontal reference lines only — no vertical grid clutter */}
         {gridLines.map((v, i) => (
           <g key={i}>
             <line x1={padLeft} y1={yScale(v)} x2={w - 10} y2={yScale(v)}
               stroke={v === 0 ? "var(--border-strong)" : "var(--border)"}
-              strokeWidth="1" strokeDasharray={v === 0 ? "none" : "3 3"} />
-            <text x={padLeft - 8} y={yScale(v)} textAnchor="end" dominantBaseline="middle"
-              fontSize="10.5" fontFamily="var(--mono)" fill="var(--text-muted)">
+              strokeWidth="1" opacity={v === 0 ? 0.7 : 0.4} />
+            <text x={padLeft - 10} y={yScale(v)} textAnchor="end" dominantBaseline="middle"
+              fontSize="10" fontFamily="var(--mono)" fill="var(--text-muted)" opacity="0.75">
               {fmtAxis(v)}
             </text>
           </g>
         ))}
         {/* ±1 SD variance band around expected P&L */}
-        <path d={bandPath} fill="var(--accent-blue)" opacity="0.08" />
-        <path d={areaPath} fill={lineColor} opacity="0.1" />
-        <path d={expectedPath} fill="none" stroke="var(--accent-blue)" strokeWidth="1.75"
-          strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
-        {/* Actual line, revealed left-to-right via stroke-dashoffset */}
-        <path d={actualPath} fill="none" stroke={lineColor}
-          strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round"
-          strokeDasharray={totalLen} strokeDashoffset={dashOffset} />
+        <path d={bandPath} fill="var(--accent-blue)" opacity="0.07" />
+        <path d={areaPath} fill="url(#areaGrad)" />
+        <path d={expectedPath} fill="none" stroke="var(--accent-blue)" strokeWidth="1.6"
+          strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+        {/* Actual line, revealed left-to-right via stroke-dashoffset, with a soft glow */}
+        <path ref={pathRef} d={actualPath} fill="none" stroke={lineColor}
+          strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"
+          strokeDasharray={pathLen} strokeDashoffset={dashOffset}
+          filter="url(#lineGlow)" />
         <circle cx={xScale(lastExpected.x)} cy={yScale(lastExpected.y)} r="3" fill="var(--accent-blue)" opacity={progress > 0.98 ? 1 : 0} />
         {/* Flat-stake counterfactual overlay */}
         {flatPath && (
           <path d={flatPath} fill="none" stroke="var(--accent-yellow)" strokeWidth="1.75"
             strokeDasharray="2 3" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
         )}
-        {/* Pulsing leading dot that travels along the line */}
-        <circle cx={dot.x} cy={dot.y} r="11" fill="url(#pulseGrad)">
-          <animate attributeName="r" values="8;14;8" dur="1.4s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.9;0.4;0.9" dur="1.4s" repeatCount="indefinite" />
+        {/* Pulsing leading dot that travels along the exact curve */}
+        <circle cx={dot.x} cy={dot.y} r="12" fill="url(#pulseGrad)">
+          <animate attributeName="r" values="9;15;9" dur="1.6s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.9;0.4;0.9" dur="1.6s" repeatCount="indefinite" />
         </circle>
-        <circle cx={dot.x} cy={dot.y} r="4" fill={lineColor} stroke="#fff" strokeWidth="1.25" />
+        <circle cx={dot.x} cy={dot.y} r="4.5" fill={lineColor} stroke="#fff" strokeWidth="1.5" filter="url(#lineGlow)" />
+        {/* Floating live value label that follows the dot while drawing in */}
+        {progress < 1 && progress > 0.02 && (
+          <g style={{ pointerEvents: "none" }}>
+            <rect x={labelX - 30} y={dot.y - 32} width="60" height="18" rx="9"
+              fill="var(--bg-panel)" stroke="var(--border-strong)" strokeWidth="1" opacity="0.95" />
+            <text x={labelX} y={dot.y - 23} textAnchor="middle" dominantBaseline="middle"
+              fontSize="10.5" fontWeight="700" fontFamily="var(--mono)" fill={lineColor}>
+              {fmtMoney(liveValue, { dp: 0 })}
+            </text>
+          </g>
+        )}
       </svg>
       <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 6, fontSize: 11, flexWrap: "wrap" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--text-muted)" }}>
