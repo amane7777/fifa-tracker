@@ -984,11 +984,13 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
         <FilterSelect value={stage} onChange={setStage} options={[["all", "All stages"], ["1", "Week 1 (group)"], ["2", "Week 2 (group)"], ["3", "Week 3 (group)"], ["ko", "KO rounds"]]} />
         <FilterSelect value={marketF} onChange={setMarketF} options={[["all", "All markets"], ...allMarkets.map(m => [m, m])]} />
         <FilterSelect value={edgeTier} onChange={setEdgeTier} options={[["all", "All edges"], ["11", "11%+"], ["7", "7–10.9%"], ["4", "4–6.9%"], ["sub4", "<4%"]]} />
-        <FilterSelect value={bookmakerF} onChange={setBookmakerF} options={[
-          ["all", "All bookmakers"],
-          ...(allBookmakers.length > 0 ? allBookmakers : BOOKMAKERS.map(b => [b.key, b.label])),
-          ["__none__", "No bookmaker"]
-        ]} />
+        {allBookmakers.length > 0 && (
+          <FilterSelect value={bookmakerF} onChange={setBookmakerF} options={[
+            ["all", "All bookmakers"],
+            ...allBookmakers,
+            ["__none__", "No bookmaker"]
+          ]} />
+        )}
         {filtersActive && (
           <button onClick={() => { setMarketF("all"); setEdgeTier("all"); setStage("all"); setBookmakerF("all"); }} style={{
             background: "none", border: "none", color: "var(--accent-blue)", fontSize: 12, cursor: "pointer", padding: "4px 2px", fontWeight: 600
@@ -1728,7 +1730,34 @@ export default function App() {
     }
   };
 
-  const [scoreCheckState, setScoreCheckState] = useState({ status: "idle", suggestions: [], error: null });
+  const fixBet365Typos = async () => {
+    // One-off cleanup for a handful of bets where "BET365" was mistyped as
+    // BET366/367/368 via the free-text "Other…" bookmaker field.
+    const typoPattern = /^bet36[6-9]$/i;
+    const updates = bets.filter(b => b.bookmaker && typoPattern.test(b.bookmaker.trim()));
+    if (updates.length === 0) {
+      showToast("No BET366/367/368 typos found");
+      return;
+    }
+    if (!window.confirm(`Found ${updates.length} bets with a Bet365 typo. Fix them to "BET365" now?`)) return;
+    setSaving(true);
+    let okCount = 0;
+    for (const b of updates) {
+      try {
+        await sbFetch(`bets?id=eq.${encodeURIComponent(b.id)}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ bookmaker: "BET365" }),
+        });
+        okCount += 1;
+      } catch (e) { /* skip failed row, continue with the rest */ }
+    }
+    setBets(prev => prev.map(b => (updates.some(u => u.id === b.id) ? { ...b, bookmaker: "BET365" } : b)));
+    setSaving(false);
+    setSaveError(false);
+    showToast(`Fixed ${okCount} of ${updates.length} bookmaker typos`);
+  };
+
 
   const backfillBookmakers = async () => {
     // Only touches bets with no bookmaker set — matches by home/away/market/stake
@@ -1771,6 +1800,8 @@ export default function App() {
     setSaveError(false);
     showToast(`Backfilled bookmaker on ${okCount} of ${updates.length} bets`);
   };
+
+  const [scoreCheckState, setScoreCheckState] = useState({ status: "idle", suggestions: [], error: null });
 
   const checkLiveScores = async () => {
     setScoreCheckState({ status: "loading", suggestions: [], error: null });
@@ -1865,6 +1896,10 @@ export default function App() {
           <button onClick={backfillBookmakers}
             style={{ background: "none", border: "none", color: "var(--header-text)", opacity: 0.7, fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "var(--ui)" }}>
             Backfill
+          </button>
+          <button onClick={fixBet365Typos}
+            style={{ background: "none", border: "none", color: "var(--header-text)", opacity: 0.7, fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "var(--ui)" }}>
+            Fix365
           </button>
         </div>
       </div>
