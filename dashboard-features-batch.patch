@@ -1,0 +1,897 @@
+From 051f7f7537925f523d8b68fa56a50dea4fb88ca5 Mon Sep 17 00:00:00 2001
+From: amane7777 <advait.mane7@gmail.com>
+Date: Wed, 1 Jul 2026 15:05:06 +0000
+Subject: [PATCH] Dashboard filters, per-market calibration, staking toggle,
+ open positions, dark mode, swipe/pull-to-refresh, skeletons, quick-add, sync
+ retry + undo
+
+---
+ index.html  |   4 +-
+ src/App.jsx | 613 +++++++++++++++++++++++++++++++++++++++++++++-------
+ 2 files changed, 531 insertions(+), 86 deletions(-)
+
+diff --git a/index.html b/index.html
+index fc908ef..2aba723 100644
+--- a/index.html
++++ b/index.html
+@@ -3,13 +3,13 @@
+   <head>
+     <meta charset="UTF-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+-    <meta name="theme-color" content="#035CA5" />
++    <meta name="theme-color" content="#0E1620" />
+     <meta name="apple-mobile-web-app-capable" content="yes" />
+     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+     <link rel="apple-touch-icon" href="/icon-192.png" />
+     <title>FIFA 26 Tracker</title>
+     <style>
+-      html, body { margin: 0; padding: 0; background: #F4F7FA; }
++      html, body { margin: 0; padding: 0; background: #0B1016; }
+     </style>
+   </head>
+   <body>
+diff --git a/src/App.jsx b/src/App.jsx
+index 65ec5b6..eead086 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -68,6 +68,28 @@ function edgeStyle(edgePct) {
+   return { color: "var(--loss)", bg: "rgba(224,57,46,0.12)", border: "rgba(224,57,46,0.3)" };
+ }
+ 
++// ── Theme palettes ────────────────────────────────────────────────────────
++// Both themes expose the same CSS-variable names, so components need no changes;
++// only the values at the root swap. Dark mode matches the dark fintech look.
++const THEMES = {
++  light: {
++    "--bg": "#F4F7FA", "--bg-panel": "#FFFFFF", "--bg-panel-2": "#EAF1F7",
++    "--border": "#D7E3EC", "--border-strong": "#B8CCDC",
++    "--text": "#0A375C", "--text-dim": "#3A6385", "--text-muted": "#5C7A93",
++    "--profit": "#1AA260", "--loss": "#E0392E", "--accent-blue": "#035CA5", "--accent-yellow": "#F9D801",
++    "--header-bg": "#035CA5", "--header-text": "#FFFFFF", "--nav-bg": "#FFFFFF",
++    "--mono": "'JetBrains Mono', 'SF Mono', monospace", "--ui": "'Inter', -apple-system, sans-serif",
++  },
++  dark: {
++    "--bg": "#0B1016", "--bg-panel": "#151C26", "--bg-panel-2": "#1E2732",
++    "--border": "#26313D", "--border-strong": "#37444F",
++    "--text": "#E6EDF3", "--text-dim": "#A9B9C6", "--text-muted": "#7C8B99",
++    "--profit": "#00E676", "--loss": "#FF5A52", "--accent-blue": "#3D9CE0", "--accent-yellow": "#F9D801",
++    "--header-bg": "#0E1620", "--header-text": "#E6EDF3", "--nav-bg": "#0E1620",
++    "--mono": "'JetBrains Mono', 'SF Mono', monospace", "--ui": "'Inter', -apple-system, sans-serif",
++  },
++};
++
+ function calcStake(myOdds, bookieOdds) {
+   if (!myOdds || !bookieOdds || myOdds <= 0 || bookieOdds <= 0) return null;
+   const myProb = 1 / myOdds;
+@@ -168,7 +190,8 @@ function betVariance(bet) {
+   return p * (1 - p) * swing * swing;
+ }
+ 
+-function CumulativeChart({ bets, animateKey }) {
++function CumulativeChart({ bets, animateKey, stakingCurve, flatFinal, tieredFinal }) {
++  const [showFlat, setShowFlat] = useState(false);
+   const { actualPts, expectedPts, sdPts } = useMemo(() => {
+     // Ordered by when they were logged (insertion order), same as Bet Log.
+     let runningActual = 0;
+@@ -285,6 +308,17 @@ function CumulativeChart({ bets, animateKey }) {
+   const dot = dotAt(progress);
+   const dashOffset = totalLen * (1 - progress);
+ 
++  // Flat-stake counterfactual overlay. stakingCurve is indexed over settled
++  // bets; map its x across the full plot width and reuse the P&L yScale, clamped
++  // to the visible band so an out-of-range flat curve still reads sensibly.
++  let flatPath = null;
++  if (showFlat && stakingCurve && stakingCurve.length > 1) {
++    const n = stakingCurve.length - 1;
++    const fx = (i) => padLeft + (i / n) * plotW;
++    const clampY = (y) => Math.max(padTop, Math.min(padTop + plotH, yScale(y)));
++    flatPath = stakingCurve.map((p, i) => `${i === 0 ? "M" : "L"} ${fx(i).toFixed(1)} ${clampY(p.flat).toFixed(1)}`).join(" ");
++  }
++
+   return (
+     <div>
+       <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 180, display: "block" }} preserveAspectRatio="none">
+@@ -315,6 +349,11 @@ function CumulativeChart({ bets, animateKey }) {
+           strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round"
+           strokeDasharray={totalLen} strokeDashoffset={dashOffset} />
+         <circle cx={xScale(lastExpected.x)} cy={yScale(lastExpected.y)} r="3" fill="var(--accent-blue)" opacity={progress > 0.98 ? 1 : 0} />
++        {/* Flat-stake counterfactual overlay */}
++        {flatPath && (
++          <path d={flatPath} fill="none" stroke="var(--accent-yellow)" strokeWidth="1.75"
++            strokeDasharray="2 3" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
++        )}
+         {/* Pulsing leading dot that travels along the line */}
+         <circle cx={dot.x} cy={dot.y} r="11" fill="url(#pulseGrad)">
+           <animate attributeName="r" values="8;14;8" dur="1.4s" repeatCount="indefinite" />
+@@ -335,7 +374,32 @@ function CumulativeChart({ bets, animateKey }) {
+           <span style={{ width: 14, height: 9, background: "var(--accent-blue)", opacity: 0.18, display: "inline-block", borderRadius: 2 }} />
+           ±1 SD
+         </span>
++        {showFlat && (
++          <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--text-muted)" }}>
++            <span style={{ width: 14, height: 0, borderTop: "1.75px dotted var(--accent-yellow)", display: "inline-block" }} />
++            Flat stake
++          </span>
++        )}
+       </div>
++      {stakingCurve && stakingCurve.length > 1 && (
++        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8 }}>
++          <button onClick={() => setShowFlat(v => !v)} style={{
++            ...btnStyle({ small: true }),
++            background: showFlat ? "var(--accent-yellow)" : "var(--bg-panel-2)",
++            color: showFlat ? "#3A2E00" : "var(--text-muted)",
++            border: showFlat ? "none" : "1px solid var(--border)",
++          }}>
++            {showFlat ? "Hide" : "Compare"} flat staking
++          </button>
++          {showFlat && (
++            <span style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--text-muted)" }}>
++              tiered <b style={{ color: tieredFinal >= flatFinal ? "var(--profit)" : "var(--loss)" }}>{fmtMoney(tieredFinal, { dp: 0 })}</b>
++              {" vs flat "}<b>{fmtMoney(flatFinal, { dp: 0 })}</b>
++              {"  ("}{tieredFinal >= flatFinal ? "+" : ""}{fmtMoney(tieredFinal - flatFinal, { dp: 0 })}{")"}
++            </span>
++          )}
++        </div>
++      )}
+     </div>
+   );
+ }
+@@ -389,6 +453,40 @@ function EdgeMeter({ edgePct }) {
+ }
+ 
+ // ── Stat card ─────────────────────────────────────────────────────────────
++function SkeletonBox({ h = 16, w = "100%", r = 6, mb = 0 }) {
++  return <div style={{ height: h, width: w, borderRadius: r, marginBottom: mb, background: "var(--bg-panel-2)", animation: "skPulse 1.4s ease-in-out infinite" }} />;
++}
++
++function SkeletonDashboard() {
++  return (
++    <div>
++      <SkeletonBox h={12} w="40%" mb={10} />
++      <SkeletonBox h={38} w="55%" mb={16} />
++      <SkeletonBox h={180} r={10} mb={16} />
++      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
++        <SkeletonBox h={64} r={10} /><SkeletonBox h={64} r={10} />
++        <SkeletonBox h={64} r={10} /><SkeletonBox h={64} r={10} />
++      </div>
++      <SkeletonBox h={12} w="35%" mb={10} />
++      <SkeletonBox h={120} r={10} />
++    </div>
++  );
++}
++
++function FilterSelect({ value, onChange, options }) {
++  return (
++    <select value={value} onChange={e => onChange(e.target.value)} style={{
++      background: "var(--bg-panel-2)", border: "1px solid var(--border)", borderRadius: 8,
++      color: "var(--text)", padding: "6px 26px 6px 10px", fontSize: 12, fontFamily: "var(--ui)",
++      fontWeight: 600, cursor: "pointer", outline: "none", maxWidth: 150,
++      backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3l3 3 3-3' stroke='%237C8B99' stroke-width='1.4' fill='none'/></svg>\")",
++      backgroundRepeat: "no-repeat", backgroundPosition: "right 9px center"
++    }}>
++      {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
++    </select>
++  );
++}
++
+ function StatCard({ label, value, sub, accent }) {
+   return (
+     <div style={{
+@@ -431,16 +529,28 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
+   const [editing, setEditing] = useState(false);
+   const [hg, setHg] = useState(bet.homeGoals ?? "");
+   const [ag, setAg] = useState(bet.awayGoals ?? "");
++  const [dragX, setDragX] = useState(0);
++  const touch = React.useRef({ x: 0, active: false });
+ 
+   const save = () => {
+     onUpdateResult(bet.id, hg === "" ? null : Number(hg), ag === "" ? null : Number(ag));
+     setEditing(false);
+   };
+ 
+-  const handleDelete = () => {
+-    if (window.confirm(`Delete this bet? (${displayTeam(bet.home)} vs ${displayTeam(bet.away)}, ${bet.market}) This can't be undone.`)) {
+-      onDelete(bet.id);
+-    }
++  const handleDelete = () => onDelete(bet.id);
++
++  // Swipe: left reveals delete, right (on pending) opens result entry.
++  const onTouchStart = (e) => { touch.current = { x: e.touches[0].clientX, active: true }; };
++  const onTouchMove = (e) => {
++    if (!touch.current.active) return;
++    const dx = e.touches[0].clientX - touch.current.x;
++    setDragX(Math.max(-90, Math.min(90, dx)));
++  };
++  const onTouchEnd = () => {
++    touch.current.active = false;
++    if (dragX <= -70) { handleDelete(); }
++    else if (dragX >= 70 && bet.result === "Pending") { setEditing(true); }
++    setDragX(0);
+   };
+ 
+   const title = betTitle(bet);
+@@ -448,10 +558,23 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
+   const potentialWin = bet.stake && bet.bookieOdds ? bet.stake * (bet.bookieOdds - 1) : null;
+ 
+   return (
+-    <div style={{
+-      background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10,
+-      padding: "12px 14px", marginBottom: 8
+-    }}>
++    <div style={{ position: "relative", marginBottom: 8 }}>
++      {/* Swipe action hints behind the card */}
++      <div style={{ position: "absolute", inset: 0, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", overflow: "hidden" }}>
++        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-blue)", opacity: dragX > 20 && bet.result === "Pending" ? 1 : 0, transition: "opacity 0.1s" }}>
++          Enter result →
++        </span>
++        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--loss)", opacity: dragX < -20 ? 1 : 0, transition: "opacity 0.1s", marginLeft: "auto" }}>
++          Delete
++        </span>
++      </div>
++      <div
++        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
++        style={{
++          background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10,
++          padding: "12px 14px", position: "relative",
++          transform: `translateX(${dragX}px)`, transition: touch.current.active ? "none" : "transform 0.2s ease"
++        }}>
+       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+         <div style={{ flex: 1, minWidth: 0 }}>
+           <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", display: "flex", alignItems: "center", gap: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+@@ -469,7 +592,7 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
+               Edge {bet.edgePct > 0 ? "+" : ""}{bet.edgePct.toFixed(1)}%
+             </div>
+           )}
+-          <div style={{ fontSize: 12, color: "#0066FF", marginTop: 2 }}>
++          <div style={{ fontSize: 12, color: "var(--accent-blue)", marginTop: 2 }}>
+             {displayTeam(bet.home)} <span>vs</span> {displayTeam(bet.away)}
+           </div>
+         </div>
+@@ -517,6 +640,7 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
+           </button>
+         </div>
+       )}
++      </div>
+     </div>
+   );
+ }
+@@ -610,26 +734,93 @@ function CalibrationChart({ calibration }) {
+   );
+ }
+ 
+-function Dashboard({ bets, onSelectMarket }) {
++function Dashboard({ bets, onSelectMarket, onRefresh }) {
++  const [dateRange, setDateRange] = useState("all"); // all | 7d | 30d
++  const [marketF, setMarketF] = useState("all");
++  const [edgeTier, setEdgeTier] = useState("all"); // all | 11 | 7 | 4 | sub4
++
++  // Extract a rough timestamp from the bet id (ids look like `bet-<ms>` or
++  // `seed-<n>`); seeds have no real date so they're only excluded by 7d/30d.
++  const betTime = (b) => {
++    const m = /^bet-(\d+)$/.exec(String(b.id || ""));
++    return m ? Number(m[1]) : null;
++  };
++
++  const filteredBets = useMemo(() => {
++    const now = Date.now();
++    const cutoff = dateRange === "7d" ? now - 7 * 864e5 : dateRange === "30d" ? now - 30 * 864e5 : null;
++    return bets.filter(b => {
++      if (marketF !== "all" && b.market !== marketF) return false;
++      if (edgeTier !== "all") {
++        const e = b.edgePct ?? -Infinity;
++        if (edgeTier === "11" && e < 11) return false;
++        if (edgeTier === "7" && (e < 7 || e >= 11)) return false;
++        if (edgeTier === "4" && (e < 4 || e >= 7)) return false;
++        if (edgeTier === "sub4" && e >= 4) return false;
++      }
++      if (cutoff !== null) {
++        const t = betTime(b);
++        if (t === null || t < cutoff) return false;
++      }
++      return true;
++    });
++  }, [bets, dateRange, marketF, edgeTier]);
++
++  const filtersActive = dateRange !== "all" || marketF !== "all" || edgeTier !== "all";
++  const allMarkets = useMemo(() => Array.from(new Set(bets.map(b => b.market))).sort(), [bets]);
++
++  // Pull-to-refresh (simple, top-of-page vertical drag).
++  const [pullY, setPullY] = useState(0);
++  const [refreshing, setRefreshing] = useState(false);
++  const pull = React.useRef({ y: 0, active: false });
++  const onTouchStart = (e) => {
++    if (window.scrollY <= 0 && !refreshing) pull.current = { y: e.touches[0].clientY, active: true };
++  };
++  const onTouchMove = (e) => {
++    if (!pull.current.active) return;
++    const dy = e.touches[0].clientY - pull.current.y;
++    if (dy > 0) setPullY(Math.min(80, dy * 0.5));
++  };
++  const onTouchEnd = async () => {
++    if (!pull.current.active) return;
++    pull.current.active = false;
++    if (pullY > 50 && onRefresh) {
++      setRefreshing(true);
++      setPullY(40);
++      try { await onRefresh(); } finally { setRefreshing(false); setPullY(0); }
++    } else {
++      setPullY(0);
++    }
++  };
++
++  const openPositions = useMemo(() => {
++    const pend = bets.filter(b => b.result === "Pending");
++    const exposure = pend.reduce((s, b) => s + (b.stake || 0), 0);
++    const bestCase = pend.reduce((s, b) => s + (b.stake && b.bookieOdds ? b.stake * (b.bookieOdds - 1) : 0), 0);
++    const worstCase = -exposure;
++    return { list: pend, exposure, bestCase, worstCase };
++  }, [bets]);
++
+   const stats = useMemo(() => {
+-    const settled = bets.filter(b => b.result && b.result !== "Pending");
++    const source = filteredBets;
++    const settled = source.filter(b => b.result && b.result !== "Pending");
+     const wins = settled.filter(b => b.result === "W").length;
+     const losses = settled.filter(b => b.result === "L").length;
+     const pushes = settled.filter(b => b.result === "P").length;
+-    const pending = bets.filter(b => b.result === "Pending");
++    const pending = source.filter(b => b.result === "Pending");
+     const totalPnl = settled.reduce((s, b) => s + (b.pnl || 0), 0);
+     const totalStaked = settled.reduce((s, b) => s + (b.stake || 0), 0);
+     const pendingStaked = pending.reduce((s, b) => s + (b.stake || 0), 0);
+     const roi = totalStaked > 0 ? (totalPnl / totalStaked) * 100 : 0;
+     const winRate = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
+-    const avgEdge = bets.length ? bets.reduce((s, b) => s + (b.edgePct || 0), 0) / bets.length : 0;
++    const avgEdge = source.length ? source.reduce((s, b) => s + (b.edgePct || 0), 0) / source.length : 0;
+     const winningOdds = settled.filter(b => b.result === "W").map(b => b.bookieOdds);
+     const losingOdds = settled.filter(b => b.result === "L").map(b => b.bookieOdds);
+     const avgWinOdds = winningOdds.length ? winningOdds.reduce((a, b) => a + b, 0) / winningOdds.length : 0;
+     const avgLossOdds = losingOdds.length ? losingOdds.reduce((a, b) => a + b, 0) / losingOdds.length : 0;
+ 
+     const byMarket = {};
+-    bets.forEach(b => {
++    source.forEach(b => {
+       if (!byMarket[b.market]) byMarket[b.market] = { bets: 0, wins: 0, pnl: 0, settled: 0 };
+       byMarket[b.market].bets += 1;
+       if (b.result === "W") byMarket[b.market].wins += 1;
+@@ -642,7 +833,7 @@ function Dashboard({ bets, onSelectMarket }) {
+       .map(([market, v]) => ({ market, ...v, winRate: v.settled ? (v.wins / v.settled) * 100 : 0 }))
+       .sort((a, b) => b.pnl - a.pnl);
+ 
+-    const byStakeDesc = [...bets].sort((a, b) => (b.stake || 0) - (a.stake || 0));
++    const byStakeDesc = [...source].sort((a, b) => (b.stake || 0) - (a.stake || 0));
+     const topStaked = byStakeDesc.slice(0, 5);
+ 
+     const topWinningByProfit = settled
+@@ -684,21 +875,56 @@ function Dashboard({ bets, onSelectMarket }) {
+       .filter(b => b.n > 0)
+       .map(b => ({ label: b.label, n: b.n, predicted: (b.predSum / b.n) * 100, actual: (b.winEq / b.n) * 100 }));
+ 
++    // Per-market calibration: for each market, mean predicted win % vs actual.
++    const marketCalMap = {};
++    settled.forEach(b => {
++      if (!b.myOdds) return;
++      if (!marketCalMap[b.market]) marketCalMap[b.market] = { n: 0, predSum: 0, winEq: 0 };
++      marketCalMap[b.market].n += 1;
++      marketCalMap[b.market].predSum += 1 / b.myOdds;
++      marketCalMap[b.market].winEq += b.result === "W" ? 1 : b.result === "P" ? 0.5 : 0;
++    });
++    const marketCalibration = Object.entries(marketCalMap)
++      .map(([market, v]) => ({ market, n: v.n, predicted: (v.predSum / v.n) * 100, actual: (v.winEq / v.n) * 100 }))
++      .sort((a, b) => b.n - a.n);
++
++    // Staking counterfactual: what a flat stake (avg of actual stakes) would have
++    // returned on the same settled bets, cumulatively, vs the real tiered staking.
++    const flatStake = totalStaked / (settled.length || 1);
++    let cumTiered = 0, cumFlat = 0;
++    const stakingCurve = [{ x: 0, tiered: 0, flat: 0 }];
++    settled.forEach((b, i) => {
++      cumTiered += b.pnl || 0;
++      if (b.bookieOdds) {
++        if (b.result === "W") cumFlat += flatStake * (b.bookieOdds - 1);
++        else if (b.result === "L") cumFlat += -flatStake;
++      }
++      stakingCurve.push({ x: i + 1, tiered: cumTiered, flat: cumFlat });
++    });
++    const flatFinal = cumFlat;
++
+     return {
+       wins, losses, pushes, pendingCount: pending.length, totalPnl, totalStaked, pendingStaked,
+-      roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, totalBets: bets.length,
++      roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, totalBets: source.length,
+       topStaked, topWinningByProfit, topLosingByStake, highestOddsWins, calibration,
++      marketCalibration, stakingCurve, flatStake, flatFinal,
+     };
+-  }, [bets]);
++  }, [filteredBets]);
+ 
+   const isProfit = stats.totalPnl >= 0;
+ 
+   return (
+-    <div style={{ paddingBottom: 90 }}>
++    <div style={{ paddingBottom: 90 }}
++      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
++      {(pullY > 0 || refreshing) && (
++        <div style={{ height: pullY, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, overflow: "hidden", transition: pull.current.active ? "none" : "height 0.2s ease" }}>
++          {refreshing ? "Refreshing…" : pullY > 50 ? "Release to refresh" : "Pull to refresh"}
++        </div>
++      )}
+       <div style={{ padding: "18px 16px 4px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+         <div>
+           <div style={{ fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+-            Net P&L · {stats.totalBets} bets logged
++            Net P&L · {stats.totalBets} bet{stats.totalBets === 1 ? "" : "s"}{filtersActive ? " (filtered)" : " logged"}
+           </div>
+           <div style={{
+             fontFamily: "var(--mono)", fontSize: 38, fontWeight: 700, marginTop: 4,
+@@ -711,7 +937,7 @@ function Dashboard({ bets, onSelectMarket }) {
+             <span>Win rate <b style={{ color: "var(--text)" }}>{fmtPct(stats.winRate, 1)}</b></span>
+           </div>
+         </div>
+-        <button onClick={() => exportBetsToCSV(bets)} style={{
++        <button onClick={() => exportBetsToCSV(filteredBets)} style={{
+           ...btnStyle({ small: true }), display: "flex", alignItems: "center", gap: 5,
+           flexShrink: 0, marginTop: 2
+         }}>
+@@ -719,10 +945,51 @@ function Dashboard({ bets, onSelectMarket }) {
+         </button>
+       </div>
+ 
++      {/* Filters */}
++      <div style={{ padding: "8px 16px 0", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
++        <FilterSelect value={dateRange} onChange={setDateRange} options={[["all", "All time"], ["7d", "Last 7d"], ["30d", "Last 30d"]]} />
++        <FilterSelect value={marketF} onChange={setMarketF} options={[["all", "All markets"], ...allMarkets.map(m => [m, m])]} />
++        <FilterSelect value={edgeTier} onChange={setEdgeTier} options={[["all", "All edges"], ["11", "11%+"], ["7", "7–10.9%"], ["4", "4–6.9%"], ["sub4", "<4%"]]} />
++        {filtersActive && (
++          <button onClick={() => { setDateRange("all"); setMarketF("all"); setEdgeTier("all"); }} style={{
++            background: "none", border: "none", color: "var(--accent-blue)", fontSize: 12, cursor: "pointer", padding: "4px 2px", fontWeight: 600
++          }}>Clear</button>
++        )}
++      </div>
++
+       <div style={{ padding: "10px 16px 0" }}>
+-        <CumulativeChart bets={bets} animateKey={bets.length} />
++        <CumulativeChart bets={filteredBets} animateKey={`${filteredBets.length}-${dateRange}-${marketF}-${edgeTier}`}
++          stakingCurve={stats.stakingCurve} flatFinal={stats.flatFinal} tieredFinal={stats.totalPnl} />
+       </div>
+ 
++      {openPositions.list.length > 0 && (
++        <div style={{ padding: "12px 16px 0" }}>
++          <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
++            Open positions · {openPositions.list.length}
++          </div>
++          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
++            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 13 }}>
++              <div><span style={{ color: "var(--text-muted)" }}>Exposure </span><b>{fmtMoney(openPositions.exposure, { dp: 0 })}</b></div>
++              <div><span style={{ color: "var(--text-muted)" }}>Best </span><b style={{ color: "var(--profit)" }}>+{fmtMoney(openPositions.bestCase, { dp: 0 })}</b></div>
++              <div><span style={{ color: "var(--text-muted)" }}>Worst </span><b style={{ color: "var(--loss)" }}>{fmtMoney(openPositions.worstCase, { dp: 0 })}</b></div>
++            </div>
++            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
++              {openPositions.list.slice(0, 6).map(b => (
++                <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
++                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
++                    {displayTeam(b.home)} v {displayTeam(b.away)} · {b.market}
++                  </span>
++                  <span style={{ fontFamily: "var(--mono)", color: "var(--text-muted)" }}>{fmtMoney(b.stake, { dp: 0 })} @ {b.bookieOdds?.toFixed(2)}</span>
++                </div>
++              ))}
++              {openPositions.list.length > 6 && (
++                <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>+{openPositions.list.length - 6} more</div>
++              )}
++            </div>
++          </div>
++        </div>
++      )}
++
+       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "12px 16px" }}>
+         <StatCard label="Record" value={`${stats.wins}-${stats.losses}-${stats.pushes}`} sub={`${stats.pendingCount} pending`} />
+         <StatCard label="Total staked" value={fmtMoney(stats.totalStaked, { dp: 0 })} sub={stats.pendingStaked > 0 ? `${fmtMoney(stats.pendingStaked, { dp: 0 })} pending` : null} />
+@@ -768,6 +1035,35 @@ function Dashboard({ bets, onSelectMarket }) {
+         </div>
+       </div>
+ 
++      {stats.marketCalibration.length > 0 && (
++        <div style={{ padding: "12px 16px 0" }}>
++          <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
++            Calibration by market
++          </div>
++          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
++            {stats.marketCalibration.map((m, i) => {
++              const diff = m.actual - m.predicted;
++              return (
++                <div key={m.market} style={{
++                  display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", fontSize: 12,
++                  borderBottom: i < stats.marketCalibration.length - 1 ? "1px solid var(--border)" : "none"
++                }}>
++                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontWeight: 600 }}>{m.market}</span>
++                  <span style={{ width: 34, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>n={m.n}</span>
++                  <span style={{ color: "var(--text-muted)", fontFamily: "var(--mono)" }}>{m.predicted.toFixed(0)}→{m.actual.toFixed(0)}%</span>
++                  <span style={{ width: 34, textAlign: "right", fontWeight: 700, fontFamily: "var(--mono)", color: diff >= 0 ? "var(--profit)" : "var(--loss)" }}>
++                    {diff >= 0 ? "+" : ""}{diff.toFixed(0)}
++                  </span>
++                </div>
++              );
++            })}
++          </div>
++          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6, fontFamily: "var(--mono)" }}>
++            predicted → actual win % · green = model beat, red = underperformed
++          </div>
++        </div>
++      )}
++
+       <HighlightSection title="Top 5 biggest stakes" bets={stats.topStaked} valueKey="stake" />
+       <HighlightSection title="Top 5 winning bets by profit" bets={stats.topWinningByProfit} valueKey="pnl" />
+       <HighlightSection title="Top 5 losing bets by stake" bets={stats.topLosingByStake} valueKey="stake" />
+@@ -823,7 +1119,7 @@ function HighlightSection({ title, bets, valueKey }) {
+ }
+ 
+ // ── Bet log list ──────────────────────────────────────────────────────────
+-function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilter, setMarketFilter, onCheckScores, scoreCheckState, onApplyScore }) {
++function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilter, setMarketFilter, onCheckScores, scoreCheckState, onApplyScore, onRefresh }) {
+   const filtered = useMemo(() => {
+     let result = bets;
+     if (marketFilter) {
+@@ -838,8 +1134,54 @@ function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilte
+   const ordered = [...filtered].reverse();
+   const pendingCount = bets.filter(b => b.result === "Pending").length;
+ 
++  // Pull-to-refresh
++  const [pullY, setPullY] = useState(0);
++  const [refreshing, setRefreshing] = useState(false);
++  const pull = React.useRef({ y: 0, active: false });
++  const onTouchStart = (e) => { if (window.scrollY <= 0 && !refreshing) pull.current = { y: e.touches[0].clientY, active: true }; };
++  const onTouchMove = (e) => {
++    if (!pull.current.active) return;
++    const dy = e.touches[0].clientY - pull.current.y;
++    if (dy > 0) setPullY(Math.min(80, dy * 0.5));
++  };
++  const onTouchEnd = async () => {
++    if (!pull.current.active) return;
++    pull.current.active = false;
++    if (pullY > 50 && onRefresh) {
++      setRefreshing(true); setPullY(40);
++      try { await onRefresh(); } finally { setRefreshing(false); setPullY(0); }
++    } else { setPullY(0); }
++  };
++
++  // Fire a local notification when a score check surfaces matches ready to
++  // settle. Requests permission the first time; only works while the app is
++  // open (true background push needs a server + VAPID keys).
++  const notifiedRef = React.useRef(0);
++  React.useEffect(() => {
++    if (scoreCheckState.status !== "done") return;
++    const n = scoreCheckState.suggestions.length;
++    if (n > 0 && n !== notifiedRef.current) {
++      notifiedRef.current = n;
++      try {
++        if ("Notification" in window) {
++          if (Notification.permission === "granted") {
++            new Notification("FIFA Tracker", { body: `${n} bet${n === 1 ? "" : "s"} ready to settle` });
++          } else if (Notification.permission !== "denied") {
++            Notification.requestPermission();
++          }
++        }
++      } catch (e) { /* notifications unsupported */ }
++    }
++  }, [scoreCheckState]);
++
+   return (
+-    <div style={{ padding: "16px 16px 90px" }}>
++    <div style={{ padding: "16px 16px 90px" }}
++      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
++      {(pullY > 0 || refreshing) && (
++        <div style={{ height: pullY, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, overflow: "hidden", transition: pull.current.active ? "none" : "height 0.2s ease" }}>
++          {refreshing ? "Refreshing…" : pullY > 50 ? "Release to refresh" : "Pull to refresh"}
++        </div>
++      )}
+       {pendingCount > 0 && (
+         <div style={{ marginBottom: 14 }}>
+           <button onClick={onCheckScores} disabled={scoreCheckState.status === "loading"} style={{
+@@ -958,6 +1300,25 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
+ 
+   return (
+     <div style={{ padding: "16px 16px 100px" }}>
++      {/* Quick market templates — one tap to preset the market */}
++      <div style={{ marginBottom: 14 }}>
++        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.03em" }}>
++          Quick market
++        </div>
++        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
++          {["Over 2.5 Goals", "Under 2.5 Goals", "BTTS Yes", "Team A Win", "Draw", "Team B Win", "Double Chance 1X"].map(m => (
++            <button key={m} onClick={() => setMarket(m)} style={{
++              ...btnStyle({ small: true }),
++              background: market === m ? "var(--accent-blue)" : "var(--bg-panel-2)",
++              color: market === m ? "#FFFFFF" : "var(--text-muted)",
++              border: market === m ? "none" : "1px solid var(--border)",
++            }}>
++              {m}
++            </button>
++          ))}
++        </div>
++      </div>
++
+       <div style={{ display: "flex", gap: 8 }}>
+         <Field label="Home team" style={{ flex: 1 }}>
+           <select value={customHome} onChange={e => setCustomHome(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
+@@ -1117,6 +1478,68 @@ export default function App() {
+   const [loaded, setLoaded] = useState(false);
+   const [saveError, setSaveError] = useState(false);
+   const [saving, setSaving] = useState(false);
++  const [theme, setTheme] = useState("dark");
++  const [toast, setToast] = useState(null);
++  // Queue of failed writes to retry, so a network blip doesn't silently lose data.
++  const pendingWrites = React.useRef([]);
++  const toastTimer = React.useRef(null);
++
++  // Persist theme choice across sessions (guarded — storage can throw in PWAs).
++  React.useEffect(() => {
++    try {
++      const saved = window.localStorage.getItem("ft_theme");
++      if (saved === "light" || saved === "dark") setTheme(saved);
++    } catch (e) { /* ignore */ }
++  }, []);
++  React.useEffect(() => {
++    try { window.localStorage.setItem("ft_theme", theme); } catch (e) { /* ignore */ }
++  }, [theme]);
++
++  const showToast = (message, opts = {}) => {
++    if (toastTimer.current) clearTimeout(toastTimer.current);
++    setToast({ message, ...opts });
++    toastTimer.current = setTimeout(() => setToast(null), opts.duration || 5000);
++  };
++
++  // Runs a Supabase write; on failure, queues it for retry and flags the error.
++  const runWrite = async (label, fn) => {
++    setSaving(true);
++    try {
++      await fn();
++      setSaveError(false);
++      return true;
++    } catch (e) {
++      pendingWrites.current.push({ label, fn });
++      setSaveError(true);
++      return false;
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  const retrySync = async () => {
++    const queue = pendingWrites.current;
++    pendingWrites.current = [];
++    setSaving(true);
++    let allOk = true;
++    for (const item of queue) {
++      try { await item.fn(); }
++      catch (e) { pendingWrites.current.push(item); allOk = false; }
++    }
++    setSaving(false);
++    setSaveError(!allOk);
++    if (allOk) showToast("Synced");
++  };
++
++  const refreshFromDb = async () => {
++    try {
++      const rows = await sbFetch("bets?select=*&order=created_at.asc");
++      if (rows) setBets(rows.map(fromRow));
++      setSaveError(false);
++    } catch (e) {
++      setSaveError(true);
++    }
++  };
+ 
+   // Load bets from Supabase on mount. If the table is empty, seed it once
+   // with the original 212 bets from the Excel workbook.
+@@ -1148,19 +1571,11 @@ export default function App() {
+   const addBet = async (bet) => {
+     const newBet = { ...bet, id: `bet-${Date.now()}` };
+     setBets(prev => [...prev, newBet]);
+-    setSaving(true);
+-    try {
+-      await sbFetch("bets", {
+-        method: "POST",
+-        headers: { Prefer: "return=minimal" },
+-        body: JSON.stringify(toRow(newBet)),
+-      });
+-      setSaveError(false);
+-    } catch (e) {
+-      setSaveError(true);
+-    } finally {
+-      setSaving(false);
+-    }
++    await runWrite("add bet", () => sbFetch("bets", {
++      method: "POST",
++      headers: { Prefer: "return=minimal" },
++      body: JSON.stringify(toRow(newBet)),
++    }));
+   };
+ 
+   const updateResult = async (id, homeGoals, awayGoals) => {
+@@ -1180,37 +1595,41 @@ export default function App() {
+       return updatedBet;
+     }));
+     if (!updatedBet) return;
+-    setSaving(true);
+-    try {
+-      await sbFetch(`bets?id=eq.${encodeURIComponent(id)}`, {
+-        method: "PATCH",
+-        headers: { Prefer: "return=minimal" },
+-        body: JSON.stringify(toRow(updatedBet)),
+-      });
+-      setSaveError(false);
+-    } catch (e) {
+-      setSaveError(true);
+-    } finally {
+-      setSaving(false);
+-    }
++    const row = toRow(updatedBet);
++    await runWrite("update result", () => sbFetch(`bets?id=eq.${encodeURIComponent(id)}`, {
++      method: "PATCH",
++      headers: { Prefer: "return=minimal" },
++      body: JSON.stringify(row),
++    }));
+   };
+ 
+   const deleteBet = async (id) => {
+-    const prevBets = bets;
++    const removed = bets.find(b => b.id === id);
++    if (!removed) return;
++    // Optimistically remove, then offer a 5s undo before it's truly gone.
+     setBets(prev => prev.filter(b => b.id !== id));
+-    setSaving(true);
+-    try {
+-      await sbFetch(`bets?id=eq.${encodeURIComponent(id)}`, {
++    let undone = false;
++    const doDelete = async () => {
++      if (undone) return;
++      await runWrite("delete bet", () => sbFetch(`bets?id=eq.${encodeURIComponent(id)}`, {
+         method: "DELETE",
+         headers: { Prefer: "return=minimal" },
+-      });
+-      setSaveError(false);
+-    } catch (e) {
+-      setBets(prevBets);
+-      setSaveError(true);
+-    } finally {
+-      setSaving(false);
+-    }
++      }));
++    };
++    showToast("Bet deleted", {
++      actionLabel: "Undo",
++      action: () => {
++        undone = true;
++        setBets(prev => {
++          // Reinsert keeping original order by id if possible.
++          if (prev.some(b => b.id === removed.id)) return prev;
++          return [...prev, removed].sort((a, b) => String(a.id).localeCompare(String(b.id)));
++        });
++        setToast(null);
++      },
++    });
++    // Commit the delete after the undo window elapses.
++    setTimeout(doDelete, 5000);
+   };
+ 
+   const resetToSeed = async () => {
+@@ -1268,69 +1687,95 @@ export default function App() {
+   if (!loaded) {
+     return (
+       <div style={{
+-        "--bg": "#F4F7FA", "--text-muted": "#5C7A93",
+-        background: "var(--bg)", minHeight: "100vh", display: "flex",
+-        alignItems: "center", justifyContent: "center", color: "var(--text-muted)",
+-        fontFamily: "'Inter', -apple-system, sans-serif", fontSize: 13
++        ...THEMES[theme],
++        background: "var(--bg)", minHeight: "100vh",
++        fontFamily: "var(--ui)", maxWidth: 480, margin: "0 auto",
++        padding: "calc(14px + env(safe-area-inset-top)) 16px 16px",
+       }}>
+-        Loading your bets…
++        <SkeletonDashboard />
+       </div>
+     );
+   }
+ 
+   return (
+     <div style={{
+-      "--bg": "#F4F7FA", "--bg-panel": "#FFFFFF", "--bg-panel-2": "#EAF1F7",
+-      "--border": "#D7E3EC", "--border-strong": "#B8CCDC",
+-      "--text": "#0A375C", "--text-dim": "#3A6385", "--text-muted": "#5C7A93",
+-      "--profit": "#1AA260", "--loss": "#E0392E", "--accent-blue": "#035CA5", "--accent-yellow": "#F9D801",
+-      "--mono": "'JetBrains Mono', 'SF Mono', monospace", "--ui": "'Inter', -apple-system, sans-serif",
++      ...THEMES[theme],
+       background: "var(--bg)", color: "var(--text)", minHeight: "100vh",
+       fontFamily: "var(--ui)", maxWidth: 480, margin: "0 auto", position: "relative",
+       WebkitFontSmoothing: "antialiased"
+     }}>
+       <style>{`
+         * { box-sizing: border-box; }
+-        input::placeholder { color: #93A9BB; }
++        input::placeholder { color: var(--text-muted); opacity: 0.7; }
+         select { -webkit-appearance: none; appearance: none; }
+         input:focus, select:focus { border-color: var(--accent-blue) !important; }
+         button { font-family: var(--ui); }
+         button:active { transform: scale(0.98); }
++        @keyframes skPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
++        @keyframes toastIn { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+       `}</style>
+ 
+       <div style={{
+-        position: "sticky", top: 0, zIndex: 10, background: "var(--accent-blue)",
++        position: "sticky", top: 0, zIndex: 10, background: "var(--header-bg)",
+         borderBottom: "1px solid var(--border-strong)",
+         padding: "calc(14px + env(safe-area-inset-top)) 16px 14px",
+         display: "flex", alignItems: "center", justifyContent: "space-between"
+       }}>
+-        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.01em", whiteSpace: "nowrap", color: "#FFFFFF" }}>
+-          FIFA 26 <span style={{ color: "rgba(255,255,255,0.7)", fontWeight: 500 }}>Tracker</span>
++        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.01em", whiteSpace: "nowrap", color: "var(--header-text)" }}>
++          FIFA 26 <span style={{ opacity: 0.7, fontWeight: 500 }}>Tracker</span>
+         </div>
+-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
++        <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
++          <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
++            title={theme === "dark" ? "Switch to light" : "Switch to dark"}
++            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 15, lineHeight: 1 }}>
++            {theme === "dark" ? "☀️" : "🌙"}
++          </button>
+           {saveError ? (
+-            <span style={{ fontSize: 11, color: "#FFD9D5", fontFamily: "var(--mono)" }}>sync failed</span>
++            <button onClick={retrySync} title="Retry sync"
++              style={{ fontSize: 11, color: "var(--loss)", fontFamily: "var(--mono)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
++              sync failed · retry
++            </button>
+           ) : saving ? (
+-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", fontFamily: "var(--mono)" }}>syncing…</span>
++            <span style={{ fontSize: 11, color: "var(--header-text)", opacity: 0.7, fontFamily: "var(--mono)" }}>syncing…</span>
+           ) : (
+             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent-yellow)", boxShadow: "0 0 6px var(--accent-yellow)" }} title="Synced" />
+           )}
+           <button onClick={resetToSeed}
+-            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.75)", fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "var(--ui)" }}>
++            style={{ background: "none", border: "none", color: "var(--header-text)", opacity: 0.7, fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "var(--ui)" }}>
+             Reset
+           </button>
+         </div>
+       </div>
+ 
+-      {tab === "dashboard" && <Dashboard bets={bets} onSelectMarket={(market) => { setMarketFilter(market); setTab("log"); }} />}
+-      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} filter={logFilter} setFilter={setLogFilter} marketFilter={marketFilter} setMarketFilter={setMarketFilter} onCheckScores={checkLiveScores} scoreCheckState={scoreCheckState} onApplyScore={applyScoreSuggestion} />}
++      {tab === "dashboard" && <Dashboard bets={bets} onSelectMarket={(market) => { setMarketFilter(market); setTab("log"); }} onRefresh={refreshFromDb} />}
++      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} filter={logFilter} setFilter={setLogFilter} marketFilter={marketFilter} setMarketFilter={setMarketFilter} onCheckScores={checkLiveScores} scoreCheckState={scoreCheckState} onApplyScore={applyScoreSuggestion} onRefresh={refreshFromDb} />}
+       {tab === "add" && <AddBet markets={MARKETS} teams={TEAMS} onAdd={addBet} onNavigate={setTab} />}
+ 
++      {toast && (
++        <div style={{
++          position: "fixed", bottom: "calc(74px + env(safe-area-inset-bottom))", left: "50%",
++          transform: "translateX(-50%)", zIndex: 30, background: "var(--bg-panel)",
++          border: "1px solid var(--border-strong)", borderRadius: 10, padding: "10px 14px",
++          display: "flex", alignItems: "center", gap: 14, boxShadow: "0 6px 24px rgba(0,0,0,0.25)",
++          animation: "toastIn 0.2s ease", maxWidth: "calc(100% - 32px)"
++        }}>
++          <span style={{ fontSize: 13, color: "var(--text)" }}>{toast.message}</span>
++          {toast.action && (
++            <button onClick={toast.action} style={{
++              background: "none", border: "none", color: "var(--accent-blue)", fontWeight: 700,
++              fontSize: 13, cursor: "pointer", padding: 0, flexShrink: 0
++            }}>
++              {toast.actionLabel}
++            </button>
++          )}
++        </div>
++      )}
++
+       <div style={{
+         position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+-        width: "100%", maxWidth: 480, background: "#FFFFFF",
++        width: "100%", maxWidth: 480, background: "var(--nav-bg)",
+         borderTop: "1px solid var(--border)", display: "flex", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
+-        boxShadow: "0 -2px 12px rgba(10,55,92,0.08)"
++        boxShadow: "0 -2px 12px rgba(0,0,0,0.12)"
+       }}>
+         {[
+           { id: "dashboard", label: "Dashboard", render: (color) => <SoccerBallIcon color={color} /> },
+-- 
+2.43.0
+

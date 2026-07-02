@@ -1,0 +1,334 @@
+From 5f850d75288098c576816d106f30318b2fa3762b Mon Sep 17 00:00:00 2001
+From: amane7777 <advait.mane7@gmail.com>
+Date: Wed, 1 Jul 2026 14:33:54 +0000
+Subject: [PATCH] =?UTF-8?q?Add=20model=20calibration=20chart,=20=C2=B11=20?=
+ =?UTF-8?q?SD=20variance=20band,=20and=20animated=20P&L=20reveal=20with=20?=
+ =?UTF-8?q?pulsing=20dot?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/App.jsx | 222 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 209 insertions(+), 13 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 209e730..65ec5b6 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -158,23 +158,56 @@ function fmtAxis(n) {
+   return `${n < 0 ? "-" : ""}$${abs.toFixed(0)}`;
+ }
+ 
+-function CumulativeChart({ bets }) {
+-  const { actualPts, expectedPts } = useMemo(() => {
++// Per-bet P&L variance for a Bernoulli outcome using our own probability.
++// Win pays stake*(odds-1); loss loses stake. With p = 1/myOdds the variance
++// of that single bet's P&L is p*(1-p)*(win - loss)^2 = p*(1-p)*(stake*odds)^2.
++function betVariance(bet) {
++  if (bet.myOdds === null || bet.myOdds === undefined || !bet.bookieOdds || !bet.stake) return 0;
++  const p = 1 / bet.myOdds;
++  const swing = bet.stake * bet.bookieOdds; // win outcome minus loss outcome
++  return p * (1 - p) * swing * swing;
++}
++
++function CumulativeChart({ bets, animateKey }) {
++  const { actualPts, expectedPts, sdPts } = useMemo(() => {
+     // Ordered by when they were logged (insertion order), same as Bet Log.
+     let runningActual = 0;
+     let runningExpected = 0;
++    let runningVar = 0;
+     const aPts = [{ x: 0, y: 0 }];
+     const ePts = [{ x: 0, y: 0 }];
++    const sPts = [{ x: 0, sd: 0 }];
+     bets.forEach((b, i) => {
+       const isSettled = b.result && b.result !== "Pending";
+       if (isSettled) runningActual += b.pnl || 0;
+       runningExpected += expectedPnl(b);
++      runningVar += betVariance(b);
+       aPts.push({ x: i + 1, y: runningActual });
+       ePts.push({ x: i + 1, y: runningExpected });
++      sPts.push({ x: i + 1, sd: Math.sqrt(runningVar) });
+     });
+-    return { actualPts: aPts, expectedPts: ePts };
++    return { actualPts: aPts, expectedPts: ePts, sdPts: sPts };
+   }, [bets]);
+ 
++  // Animation: draw the actual line + sweep the pulsing dot across on mount /
++  // whenever animateKey changes (i.e. each time the dashboard is opened).
++  const [progress, setProgress] = React.useState(0);
++  React.useEffect(() => {
++    setProgress(0);
++    let raf;
++    const DURATION = 1100;
++    const start = performance.now();
++    const tick = (now) => {
++      const t = Math.min(1, (now - start) / DURATION);
++      // easeInOutCubic for a smooth accelerate/decelerate feel
++      const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
++      setProgress(eased);
++      if (t < 1) raf = requestAnimationFrame(tick);
++    };
++    raf = requestAnimationFrame(tick);
++    return () => cancelAnimationFrame(raf);
++  }, [animateKey]);
++
+   if (actualPts.length < 2) {
+     return (
+       <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>
+@@ -185,7 +218,15 @@ function CumulativeChart({ bets }) {
+ 
+   const w = 700, h = 190;
+   const padTop = 10, padBottom = 22, padLeft = 54;
+-  const allYs = [...actualPts.map(p => p.y), ...expectedPts.map(p => p.y), 0];
++
++  // Upper/lower ±1 SD band points around the expected curve.
++  const upperPts = expectedPts.map((p, i) => ({ x: p.x, y: p.y + sdPts[i].sd }));
++  const lowerPts = expectedPts.map((p, i) => ({ x: p.x, y: p.y - sdPts[i].sd }));
++
++  const allYs = [
++    ...actualPts.map(p => p.y), ...expectedPts.map(p => p.y),
++    ...upperPts.map(p => p.y), ...lowerPts.map(p => p.y), 0
++  ];
+   const rawMin = Math.min(...allYs);
+   const rawMax = Math.max(...allYs);
+   const step = niceStep(rawMax - rawMin);
+@@ -205,14 +246,54 @@ function CumulativeChart({ bets }) {
+   const buildPath = (pts) => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(" ");
+   const actualPath = buildPath(actualPts);
+   const expectedPath = buildPath(expectedPts);
++
++  // Filled variance band between upper and lower (upper forward, lower back).
++  const bandPath =
++    buildPath(upperPts) + " " +
++    lowerPts.slice().reverse().map(p => `L ${xScale(p.x).toFixed(1)} ${yScale(p.y).toFixed(1)}`).join(" ") + " Z";
++
+   const lastActual = actualPts[actualPts.length - 1];
+   const lastExpected = expectedPts[expectedPts.length - 1];
+   const isProfit = lastActual.y >= 0;
++  const lineColor = isProfit ? "var(--profit)" : "var(--loss)";
+   const areaPath = `${actualPath} L ${xScale(lastActual.x).toFixed(1)} ${zeroY.toFixed(1)} L ${xScale(0).toFixed(1)} ${zeroY.toFixed(1)} Z`;
+ 
++  // Total length of the actual polyline (in px) so we can animate a stroke draw.
++  let totalLen = 0;
++  for (let i = 1; i < actualPts.length; i++) {
++    const dx = xScale(actualPts[i].x) - xScale(actualPts[i - 1].x);
++    const dy = yScale(actualPts[i].y) - yScale(actualPts[i - 1].y);
++    totalLen += Math.hypot(dx, dy);
++  }
++
++  // Interpolated position of the moving pulse dot along the actual line.
++  const dotAt = (frac) => {
++    const target = frac * totalLen;
++    let acc = 0;
++    for (let i = 1; i < actualPts.length; i++) {
++      const x0 = xScale(actualPts[i - 1].x), y0 = yScale(actualPts[i - 1].y);
++      const x1 = xScale(actualPts[i].x), y1 = yScale(actualPts[i].y);
++      const segLen = Math.hypot(x1 - x0, y1 - y0);
++      if (acc + segLen >= target) {
++        const r = segLen === 0 ? 0 : (target - acc) / segLen;
++        return { x: x0 + (x1 - x0) * r, y: y0 + (y1 - y0) * r };
++      }
++      acc += segLen;
++    }
++    return { x: xScale(lastActual.x), y: yScale(lastActual.y) };
++  };
++  const dot = dotAt(progress);
++  const dashOffset = totalLen * (1 - progress);
++
+   return (
+     <div>
+       <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 180, display: "block" }} preserveAspectRatio="none">
++        <defs>
++          <radialGradient id="pulseGrad">
++            <stop offset="0%" stopColor={lineColor} stopOpacity="0.55" />
++            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
++          </radialGradient>
++        </defs>
+         {gridLines.map((v, i) => (
+           <g key={i}>
+             <line x1={padLeft} y1={yScale(v)} x2={w - 10} y2={yScale(v)}
+@@ -224,23 +305,36 @@ function CumulativeChart({ bets }) {
+             </text>
+           </g>
+         ))}
+-        <path d={areaPath} fill={isProfit ? "var(--profit)" : "var(--loss)"} opacity="0.1" />
++        {/* ±1 SD variance band around expected P&L */}
++        <path d={bandPath} fill="var(--accent-blue)" opacity="0.08" />
++        <path d={areaPath} fill={lineColor} opacity="0.1" />
+         <path d={expectedPath} fill="none" stroke="var(--accent-blue)" strokeWidth="1.75"
+           strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
+-        <path d={actualPath} fill="none" stroke={isProfit ? "var(--profit)" : "var(--loss)"}
+-          strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" />
+-        <circle cx={xScale(lastActual.x)} cy={yScale(lastActual.y)} r="3.5" fill={isProfit ? "var(--profit)" : "var(--loss)"} />
+-        <circle cx={xScale(lastExpected.x)} cy={yScale(lastExpected.y)} r="3" fill="var(--accent-blue)" />
++        {/* Actual line, revealed left-to-right via stroke-dashoffset */}
++        <path d={actualPath} fill="none" stroke={lineColor}
++          strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round"
++          strokeDasharray={totalLen} strokeDashoffset={dashOffset} />
++        <circle cx={xScale(lastExpected.x)} cy={yScale(lastExpected.y)} r="3" fill="var(--accent-blue)" opacity={progress > 0.98 ? 1 : 0} />
++        {/* Pulsing leading dot that travels along the line */}
++        <circle cx={dot.x} cy={dot.y} r="11" fill="url(#pulseGrad)">
++          <animate attributeName="r" values="8;14;8" dur="1.4s" repeatCount="indefinite" />
++          <animate attributeName="opacity" values="0.9;0.4;0.9" dur="1.4s" repeatCount="indefinite" />
++        </circle>
++        <circle cx={dot.x} cy={dot.y} r="4" fill={lineColor} stroke="#fff" strokeWidth="1.25" />
+       </svg>
+-      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 6, fontSize: 11 }}>
++      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 6, fontSize: 11, flexWrap: "wrap" }}>
+         <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--text-muted)" }}>
+-          <span style={{ width: 14, height: 2, background: isProfit ? "var(--profit)" : "var(--loss)", display: "inline-block" }} />
++          <span style={{ width: 14, height: 2, background: lineColor, display: "inline-block" }} />
+           Actual P&L
+         </span>
+         <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--text-muted)" }}>
+           <span style={{ width: 14, height: 0, borderTop: "1.75px dashed var(--accent-blue)", display: "inline-block" }} />
+           Expected P&L
+         </span>
++        <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--text-muted)" }}>
++          <span style={{ width: 14, height: 9, background: "var(--accent-blue)", opacity: 0.18, display: "inline-block", borderRadius: 2 }} />
++          ±1 SD
++        </span>
+       </div>
+     </div>
+   );
+@@ -447,6 +541,75 @@ function btnStyle({ primary, small, full, danger } = {}) {
+ }
+ 
+ // ── Dashboard ─────────────────────────────────────────────────────────────
++// ── Model calibration: predicted win % vs actual, per probability bucket ──
++function CalibrationChart({ calibration }) {
++  if (!calibration || calibration.length === 0) {
++    return (
++      <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 12px", fontSize: 12.5, color: "var(--text-muted)", textAlign: "center" }}>
++        Settle some bets to see how well-calibrated your model is.
++      </div>
++    );
++  }
++  const w = 700, h = 220;
++  const pad = { top: 14, right: 14, bottom: 30, left: 34 };
++  const plotW = w - pad.left - pad.right;
++  const plotH = h - pad.top - pad.bottom;
++  const sx = (v) => pad.left + (v / 100) * plotW;      // 0–100% predicted
++  const sy = (v) => pad.top + plotH - (v / 100) * plotH; // 0–100% actual
++
++  const ticks = [0, 25, 50, 75, 100];
++
++  return (
++    <div>
++      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 210, display: "block" }} preserveAspectRatio="none">
++        {ticks.map((t, i) => (
++          <g key={i}>
++            <line x1={sx(t)} y1={pad.top} x2={sx(t)} y2={pad.top + plotH} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3" />
++            <line x1={pad.left} y1={sy(t)} x2={pad.left + plotW} y2={sy(t)} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3" />
++            <text x={sx(t)} y={h - 10} textAnchor="middle" fontSize="10.5" fontFamily="var(--mono)" fill="var(--text-muted)">{t}</text>
++            <text x={pad.left - 6} y={sy(t)} textAnchor="end" dominantBaseline="middle" fontSize="10.5" fontFamily="var(--mono)" fill="var(--text-muted)">{t}</text>
++          </g>
++        ))}
++        {/* Perfect-calibration diagonal */}
++        <line x1={sx(0)} y1={sy(0)} x2={sx(100)} y2={sy(100)} stroke="var(--border-strong)" strokeWidth="1.5" strokeDasharray="5 4" />
++        {/* Data points: sized by sample count */}
++        {calibration.map((c, i) => {
++          const r = Math.max(4, Math.min(11, 3 + Math.sqrt(c.n)));
++          const over = c.actual >= c.predicted;
++          return (
++            <g key={i}>
++              <line x1={sx(c.predicted)} y1={sy(c.predicted)} x2={sx(c.predicted)} y2={sy(c.actual)}
++                stroke={over ? "var(--profit)" : "var(--loss)"} strokeWidth="1.25" opacity="0.5" />
++              <circle cx={sx(c.predicted)} cy={sy(c.actual)} r={r}
++                fill={over ? "#00E676" : "var(--loss)"} fillOpacity="0.85" stroke="#fff" strokeWidth="1.25" />
++            </g>
++          );
++        })}
++      </svg>
++      <div style={{ fontSize: 10.5, color: "var(--text-muted)", textAlign: "center", marginTop: 2, fontFamily: "var(--mono)" }}>
++        predicted win % (x) vs actual (y) · dashed = perfect · dot size = sample count
++      </div>
++      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
++        {calibration.map((c, i) => {
++          const diff = c.actual - c.predicted;
++          return (
++            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "var(--mono)" }}>
++              <span style={{ width: 60, color: "var(--text-muted)" }}>{c.label}</span>
++              <span style={{ width: 34, color: "var(--text-muted)" }}>n={c.n}</span>
++              <span style={{ flex: 1, color: "var(--text)" }}>
++                pred {c.predicted.toFixed(0)}% → act {c.actual.toFixed(0)}%
++              </span>
++              <span style={{ fontWeight: 700, color: diff >= 0 ? "var(--profit)" : "var(--loss)" }}>
++                {diff >= 0 ? "+" : ""}{diff.toFixed(0)}
++              </span>
++            </div>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
++
+ function Dashboard({ bets, onSelectMarket }) {
+   const stats = useMemo(() => {
+     const settled = bets.filter(b => b.result && b.result !== "Pending");
+@@ -497,10 +660,34 @@ function Dashboard({ bets, onSelectMarket }) {
+       .sort((a, b) => (b.bookieOdds || 0) - (a.bookieOdds || 0))
+       .slice(0, 5);
+ 
++    // ── Calibration: bucket settled bets by our predicted win probability
++    // (1/myOdds) and compare predicted vs actual hit rate. Pushes are treated
++    // as half a win, matching how a fair settlement would score them.
++    const calBuckets = [
++      { lo: 0, hi: 0.4, label: "<40%" },
++      { lo: 0.4, hi: 0.5, label: "40–50%" },
++      { lo: 0.5, hi: 0.6, label: "50–60%" },
++      { lo: 0.6, hi: 0.7, label: "60–70%" },
++      { lo: 0.7, hi: 0.8, label: "70–80%" },
++      { lo: 0.8, hi: 1.01, label: "80%+" },
++    ].map(b => ({ ...b, n: 0, predSum: 0, winEq: 0 }));
++    settled.forEach(b => {
++      if (!b.myOdds) return;
++      const p = 1 / b.myOdds;
++      const bucket = calBuckets.find(k => p >= k.lo && p < k.hi);
++      if (!bucket) return;
++      bucket.n += 1;
++      bucket.predSum += p;
++      bucket.winEq += b.result === "W" ? 1 : b.result === "P" ? 0.5 : 0;
++    });
++    const calibration = calBuckets
++      .filter(b => b.n > 0)
++      .map(b => ({ label: b.label, n: b.n, predicted: (b.predSum / b.n) * 100, actual: (b.winEq / b.n) * 100 }));
++
+     return {
+       wins, losses, pushes, pendingCount: pending.length, totalPnl, totalStaked, pendingStaked,
+       roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, totalBets: bets.length,
+-      topStaked, topWinningByProfit, topLosingByStake, highestOddsWins,
++      topStaked, topWinningByProfit, topLosingByStake, highestOddsWins, calibration,
+     };
+   }, [bets]);
+ 
+@@ -533,7 +720,7 @@ function Dashboard({ bets, onSelectMarket }) {
+       </div>
+ 
+       <div style={{ padding: "10px 16px 0" }}>
+-        <CumulativeChart bets={bets} />
++        <CumulativeChart bets={bets} animateKey={bets.length} />
+       </div>
+ 
+       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "12px 16px" }}>
+@@ -572,6 +759,15 @@ function Dashboard({ bets, onSelectMarket }) {
+         </div>
+       </div>
+ 
++      <div style={{ padding: "4px 16px 0" }}>
++        <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
++          Model calibration
++        </div>
++        <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 12px 14px" }}>
++          <CalibrationChart calibration={stats.calibration} />
++        </div>
++      </div>
++
+       <HighlightSection title="Top 5 biggest stakes" bets={stats.topStaked} valueKey="stake" />
+       <HighlightSection title="Top 5 winning bets by profit" bets={stats.topWinningByProfit} valueKey="pnl" />
+       <HighlightSection title="Top 5 losing bets by stake" bets={stats.topLosingByStake} valueKey="stake" />
+-- 
+2.43.0
+

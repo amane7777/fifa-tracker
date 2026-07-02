@@ -1,0 +1,261 @@
+From c5fbc7249dcdc24548e2d02357fc0eec162ddbac Mon Sep 17 00:00:00 2001
+From: amane7777 <advait.mane7@gmail.com>
+Date: Wed, 1 Jul 2026 15:21:24 +0000
+Subject: [PATCH] New bets default to KO; remove date-range filter and
+ calibration sections
+
+---
+ src/App.jsx | 174 +++-------------------------------------------------
+ 1 file changed, 9 insertions(+), 165 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 932d820..868dfa3 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -58,8 +58,11 @@ SEED_MATCHES.forEach(m => {
+ });
+ 
+ // "1" | "2" | "3" for group matchdays, or "ko" for knockout (R32+).
++// Bets logged in-app from now on are knockout by default; only the historical
++// seeded bets (ids like `seed-…`) are attributed to group weeks by pairing.
+ function betStage(bet) {
+   if (!bet || !bet.home || !bet.away) return "ko";
++  if (typeof bet.id === "string" && bet.id.startsWith("bet-")) return "ko";
+   const key = [displayTeam(bet.home), displayTeam(bet.away)].map(s => s.toLowerCase()).sort().join("|");
+   const md = FIXTURE_STAGE[key];
+   return md ? String(md) : "ko";
+@@ -686,91 +689,12 @@ function btnStyle({ primary, small, full, danger } = {}) {
+ }
+ 
+ // ── Dashboard ─────────────────────────────────────────────────────────────
+-// ── Model calibration: predicted win % vs actual, per probability bucket ──
+-function CalibrationChart({ calibration }) {
+-  if (!calibration || calibration.length === 0) {
+-    return (
+-      <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 12px", fontSize: 12.5, color: "var(--text-muted)", textAlign: "center" }}>
+-        Settle some bets to see how well-calibrated your model is.
+-      </div>
+-    );
+-  }
+-  const w = 700, h = 220;
+-  const pad = { top: 14, right: 14, bottom: 30, left: 34 };
+-  const plotW = w - pad.left - pad.right;
+-  const plotH = h - pad.top - pad.bottom;
+-  const sx = (v) => pad.left + (v / 100) * plotW;      // 0–100% predicted
+-  const sy = (v) => pad.top + plotH - (v / 100) * plotH; // 0–100% actual
+-
+-  const ticks = [0, 25, 50, 75, 100];
+-
+-  return (
+-    <div>
+-      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 210, display: "block" }} preserveAspectRatio="none">
+-        {ticks.map((t, i) => (
+-          <g key={i}>
+-            <line x1={sx(t)} y1={pad.top} x2={sx(t)} y2={pad.top + plotH} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3" />
+-            <line x1={pad.left} y1={sy(t)} x2={pad.left + plotW} y2={sy(t)} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3" />
+-            <text x={sx(t)} y={h - 10} textAnchor="middle" fontSize="10.5" fontFamily="var(--mono)" fill="var(--text-muted)">{t}</text>
+-            <text x={pad.left - 6} y={sy(t)} textAnchor="end" dominantBaseline="middle" fontSize="10.5" fontFamily="var(--mono)" fill="var(--text-muted)">{t}</text>
+-          </g>
+-        ))}
+-        {/* Perfect-calibration diagonal */}
+-        <line x1={sx(0)} y1={sy(0)} x2={sx(100)} y2={sy(100)} stroke="var(--border-strong)" strokeWidth="1.5" strokeDasharray="5 4" />
+-        {/* Data points: sized by sample count */}
+-        {calibration.map((c, i) => {
+-          const r = Math.max(4, Math.min(11, 3 + Math.sqrt(c.n)));
+-          const over = c.actual >= c.predicted;
+-          return (
+-            <g key={i}>
+-              <line x1={sx(c.predicted)} y1={sy(c.predicted)} x2={sx(c.predicted)} y2={sy(c.actual)}
+-                stroke={over ? "var(--profit)" : "var(--loss)"} strokeWidth="1.25" opacity="0.5" />
+-              <circle cx={sx(c.predicted)} cy={sy(c.actual)} r={r}
+-                fill={over ? "#00E676" : "var(--loss)"} fillOpacity="0.85" stroke="#fff" strokeWidth="1.25" />
+-            </g>
+-          );
+-        })}
+-      </svg>
+-      <div style={{ fontSize: 10.5, color: "var(--text-muted)", textAlign: "center", marginTop: 2, fontFamily: "var(--mono)" }}>
+-        predicted win % (x) vs actual (y) · dashed = perfect · dot size = sample count
+-      </div>
+-      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+-        {calibration.map((c, i) => {
+-          const diff = c.actual - c.predicted;
+-          return (
+-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "var(--mono)" }}>
+-              <span style={{ width: 60, color: "var(--text-muted)" }}>{c.label}</span>
+-              <span style={{ width: 34, color: "var(--text-muted)" }}>n={c.n}</span>
+-              <span style={{ flex: 1, color: "var(--text)" }}>
+-                pred {c.predicted.toFixed(0)}% → act {c.actual.toFixed(0)}%
+-              </span>
+-              <span style={{ fontWeight: 700, color: diff >= 0 ? "var(--profit)" : "var(--loss)" }}>
+-                {diff >= 0 ? "+" : ""}{diff.toFixed(0)}
+-              </span>
+-            </div>
+-          );
+-        })}
+-      </div>
+-    </div>
+-  );
+-}
+-
+ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+-  const [dateRange, setDateRange] = useState("all"); // all | 7d | 30d
+   const [marketF, setMarketF] = useState("all");
+   const [edgeTier, setEdgeTier] = useState("all"); // all | 11 | 7 | 4 | sub4
+   const [stage, setStage] = useState("all"); // all | 1 | 2 | 3 | ko
+ 
+-  // Extract a rough timestamp from the bet id (ids look like `bet-<ms>` or
+-  // `seed-<n>`); seeds have no real date so they're only excluded by 7d/30d.
+-  const betTime = (b) => {
+-    const m = /^bet-(\d+)$/.exec(String(b.id || ""));
+-    return m ? Number(m[1]) : null;
+-  };
+-
+   const filteredBets = useMemo(() => {
+-    const now = Date.now();
+-    const cutoff = dateRange === "7d" ? now - 7 * 864e5 : dateRange === "30d" ? now - 30 * 864e5 : null;
+     return bets.filter(b => {
+       if (marketF !== "all" && b.market !== marketF) return false;
+       if (stage !== "all" && betStage(b) !== stage) return false;
+@@ -781,15 +705,11 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+         if (edgeTier === "4" && (e < 4 || e >= 7)) return false;
+         if (edgeTier === "sub4" && e >= 4) return false;
+       }
+-      if (cutoff !== null) {
+-        const t = betTime(b);
+-        if (t === null || t < cutoff) return false;
+-      }
+       return true;
+     });
+-  }, [bets, dateRange, marketF, edgeTier, stage]);
++  }, [bets, marketF, edgeTier, stage]);
+ 
+-  const filtersActive = dateRange !== "all" || marketF !== "all" || edgeTier !== "all" || stage !== "all";
++  const filtersActive = marketF !== "all" || edgeTier !== "all" || stage !== "all";
+   const allMarkets = useMemo(() => Array.from(new Set(bets.map(b => b.market))).sort(), [bets]);
+ 
+   // Pull-to-refresh (simple, top-of-page vertical drag).
+@@ -874,43 +794,6 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+       .sort((a, b) => (b.bookieOdds || 0) - (a.bookieOdds || 0))
+       .slice(0, 5);
+ 
+-    // ── Calibration: bucket settled bets by our predicted win probability
+-    // (1/myOdds) and compare predicted vs actual hit rate. Pushes are treated
+-    // as half a win, matching how a fair settlement would score them.
+-    const calBuckets = [
+-      { lo: 0, hi: 0.4, label: "<40%" },
+-      { lo: 0.4, hi: 0.5, label: "40–50%" },
+-      { lo: 0.5, hi: 0.6, label: "50–60%" },
+-      { lo: 0.6, hi: 0.7, label: "60–70%" },
+-      { lo: 0.7, hi: 0.8, label: "70–80%" },
+-      { lo: 0.8, hi: 1.01, label: "80%+" },
+-    ].map(b => ({ ...b, n: 0, predSum: 0, winEq: 0 }));
+-    settled.forEach(b => {
+-      if (!b.myOdds) return;
+-      const p = 1 / b.myOdds;
+-      const bucket = calBuckets.find(k => p >= k.lo && p < k.hi);
+-      if (!bucket) return;
+-      bucket.n += 1;
+-      bucket.predSum += p;
+-      bucket.winEq += b.result === "W" ? 1 : b.result === "P" ? 0.5 : 0;
+-    });
+-    const calibration = calBuckets
+-      .filter(b => b.n > 0)
+-      .map(b => ({ label: b.label, n: b.n, predicted: (b.predSum / b.n) * 100, actual: (b.winEq / b.n) * 100 }));
+-
+-    // Per-market calibration: for each market, mean predicted win % vs actual.
+-    const marketCalMap = {};
+-    settled.forEach(b => {
+-      if (!b.myOdds) return;
+-      if (!marketCalMap[b.market]) marketCalMap[b.market] = { n: 0, predSum: 0, winEq: 0 };
+-      marketCalMap[b.market].n += 1;
+-      marketCalMap[b.market].predSum += 1 / b.myOdds;
+-      marketCalMap[b.market].winEq += b.result === "W" ? 1 : b.result === "P" ? 0.5 : 0;
+-    });
+-    const marketCalibration = Object.entries(marketCalMap)
+-      .map(([market, v]) => ({ market, n: v.n, predicted: (v.predSum / v.n) * 100, actual: (v.winEq / v.n) * 100 }))
+-      .sort((a, b) => b.n - a.n);
+-
+     // Staking counterfactual: what a flat stake (avg of actual stakes) would have
+     // returned on the same settled bets, cumulatively, vs the real tiered staking.
+     const flatStake = totalStaked / (settled.length || 1);
+@@ -929,8 +812,8 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+     return {
+       wins, losses, pushes, pendingCount: pending.length, totalPnl, totalStaked, pendingStaked,
+       roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, totalBets: source.length,
+-      topStaked, topWinningByProfit, topLosingByStake, highestOddsWins, calibration,
+-      marketCalibration, stakingCurve, flatStake, flatFinal,
++      topStaked, topWinningByProfit, topLosingByStake, highestOddsWins,
++      stakingCurve, flatStake, flatFinal,
+     };
+   }, [filteredBets]);
+ 
+@@ -970,19 +853,18 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+ 
+       {/* Filters */}
+       <div style={{ padding: "8px 16px 0", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+-        <FilterSelect value={dateRange} onChange={setDateRange} options={[["all", "All time"], ["7d", "Last 7d"], ["30d", "Last 30d"]]} />
+         <FilterSelect value={stage} onChange={setStage} options={[["all", "All stages"], ["1", "Week 1 (group)"], ["2", "Week 2 (group)"], ["3", "Week 3 (group)"], ["ko", "KO rounds"]]} />
+         <FilterSelect value={marketF} onChange={setMarketF} options={[["all", "All markets"], ...allMarkets.map(m => [m, m])]} />
+         <FilterSelect value={edgeTier} onChange={setEdgeTier} options={[["all", "All edges"], ["11", "11%+"], ["7", "7–10.9%"], ["4", "4–6.9%"], ["sub4", "<4%"]]} />
+         {filtersActive && (
+-          <button onClick={() => { setDateRange("all"); setMarketF("all"); setEdgeTier("all"); setStage("all"); }} style={{
++          <button onClick={() => { setMarketF("all"); setEdgeTier("all"); setStage("all"); }} style={{
+             background: "none", border: "none", color: "var(--accent-blue)", fontSize: 12, cursor: "pointer", padding: "4px 2px", fontWeight: 600
+           }}>Clear</button>
+         )}
+       </div>
+ 
+       <div style={{ padding: "10px 16px 0" }}>
+-        <CumulativeChart bets={filteredBets} animateKey={`${filteredBets.length}-${dateRange}-${marketF}-${edgeTier}-${stage}`}
++        <CumulativeChart bets={filteredBets} animateKey={`${filteredBets.length}-${marketF}-${edgeTier}-${stage}`}
+           stakingCurve={stats.stakingCurve} flatFinal={stats.flatFinal} tieredFinal={stats.totalPnl} />
+       </div>
+ 
+@@ -1050,44 +932,6 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+         </div>
+       </div>
+ 
+-      <div style={{ padding: "4px 16px 0" }}>
+-        <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+-          Model calibration
+-        </div>
+-        <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 12px 14px" }}>
+-          <CalibrationChart calibration={stats.calibration} />
+-        </div>
+-      </div>
+-
+-      {stats.marketCalibration.length > 0 && (
+-        <div style={{ padding: "12px 16px 0" }}>
+-          <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+-            Calibration by market
+-          </div>
+-          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+-            {stats.marketCalibration.map((m, i) => {
+-              const diff = m.actual - m.predicted;
+-              return (
+-                <div key={m.market} style={{
+-                  display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", fontSize: 12,
+-                  borderBottom: i < stats.marketCalibration.length - 1 ? "1px solid var(--border)" : "none"
+-                }}>
+-                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontWeight: 600 }}>{m.market}</span>
+-                  <span style={{ width: 34, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>n={m.n}</span>
+-                  <span style={{ color: "var(--text-muted)", fontFamily: "var(--mono)" }}>{m.predicted.toFixed(0)}→{m.actual.toFixed(0)}%</span>
+-                  <span style={{ width: 34, textAlign: "right", fontWeight: 700, fontFamily: "var(--mono)", color: diff >= 0 ? "var(--profit)" : "var(--loss)" }}>
+-                    {diff >= 0 ? "+" : ""}{diff.toFixed(0)}
+-                  </span>
+-                </div>
+-              );
+-            })}
+-          </div>
+-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6, fontFamily: "var(--mono)" }}>
+-            predicted → actual win % · green = model beat, red = underperformed
+-          </div>
+-        </div>
+-      )}
+-
+       <HighlightSection title="Top 5 biggest stakes" bets={stats.topStaked} valueKey="stake" />
+       <HighlightSection title="Top 5 winning bets by profit" bets={stats.topWinningByProfit} valueKey="pnl" />
+       <HighlightSection title="Top 5 losing bets by stake" bets={stats.topLosingByStake} valueKey="stake" />
+-- 
+2.43.0
+
