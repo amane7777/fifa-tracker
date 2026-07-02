@@ -107,7 +107,9 @@ const THEMES = {
     "--border": "#D7E3EC", "--border-strong": "#B8CCDC",
     "--text": "#0A375C", "--text-dim": "#3A6385", "--text-muted": "#5C7A93",
     "--profit": "#1AA260", "--loss": "#E0392E", "--accent-blue": "#035CA5", "--accent-yellow": "#F9D801",
-    "--header-bg": "#035CA5", "--header-text": "#FFFFFF", "--nav-bg": "#FFFFFF",
+    "--header-bg": "#035CA5", "--header-bg-2": "#024A87", "--header-text": "#FFFFFF", "--nav-bg": "#FFFFFF",
+    "--shadow-sm": "0 1px 2px rgba(10,55,92,0.06), 0 1px 3px rgba(10,55,92,0.05)",
+    "--shadow-md": "0 4px 14px rgba(10,55,92,0.10), 0 1px 3px rgba(10,55,92,0.06)",
     "--mono": "'JetBrains Mono', 'SF Mono', monospace", "--ui": "'Inter', -apple-system, sans-serif",
   },
   dark: {
@@ -115,7 +117,9 @@ const THEMES = {
     "--border": "#26313D", "--border-strong": "#37444F",
     "--text": "#E6EDF3", "--text-dim": "#A9B9C6", "--text-muted": "#7C8B99",
     "--profit": "#00E676", "--loss": "#FF5A52", "--accent-blue": "#3D9CE0", "--accent-yellow": "#F9D801",
-    "--header-bg": "#0E1620", "--header-text": "#E6EDF3", "--nav-bg": "#0E1620",
+    "--header-bg": "#0E1620", "--header-bg-2": "#0A0F16", "--header-text": "#E6EDF3", "--nav-bg": "#0E1620",
+    "--shadow-sm": "0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.25)",
+    "--shadow-md": "0 6px 18px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.3)",
     "--mono": "'JetBrains Mono', 'SF Mono', monospace", "--ui": "'Inter', -apple-system, sans-serif",
   },
 };
@@ -507,9 +511,10 @@ function SkeletonDashboard() {
 function FilterSelect({ value, onChange, options }) {
   return (
     <select value={value} onChange={e => onChange(e.target.value)} style={{
-      background: "var(--bg-panel-2)", border: "1px solid var(--border)", borderRadius: 8,
-      color: "var(--text)", padding: "6px 26px 6px 10px", fontSize: 12, fontFamily: "var(--ui)",
+      background: "var(--bg-panel-2)", border: "1px solid var(--border)", borderRadius: 20,
+      color: "var(--text)", padding: "6px 26px 6px 12px", fontSize: 12, fontFamily: "var(--ui)",
       fontWeight: 600, cursor: "pointer", outline: "none", maxWidth: 150,
+      transition: "border-color 0.12s ease",
       backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3l3 3 3-3' stroke='%237C8B99' stroke-width='1.4' fill='none'/></svg>\")",
       backgroundRepeat: "no-repeat", backgroundPosition: "right 9px center"
     }}>
@@ -555,11 +560,11 @@ function AnimatedNumber({ value, format, duration = 700 }) {
 function StatCard({ label, value, sub, accent }) {
   return (
     <div style={{
-      background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10,
+      background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)",
       padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0
     }}>
       <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</span>
-      <span style={{ fontFamily: "var(--mono)", fontSize: 19, fontWeight: 600, color: accent || "var(--text)" }}>{value}</span>
+      <span style={{ fontFamily: "var(--mono)", fontSize: 19.5, fontWeight: 700, color: accent || "var(--text)", letterSpacing: "-0.01em" }}>{value}</span>
       {sub && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{sub}</span>}
     </div>
   );
@@ -572,11 +577,11 @@ function StatCard({ label, value, sub, accent }) {
 // automatically and only fall back to the coloured initials if the image
 // 404s, so no code change is needed once you add the files.
 const BOOKMAKERS = [
-  { key: "sportsbet", label: "Sportsbet", initials: "SB", bg: "#0C2AA6", fg: "#FFE500" },
-  { key: "tab", label: "TAB", initials: "TAB", bg: "#00843D", fg: "#FFFFFF" },
-  { key: "betr", label: "BETR", initials: "BR", bg: "#0B1E4D", fg: "#4FC3F7" },
-  { key: "bet365", label: "Bet365", initials: "365", bg: "#046A38", fg: "#FFE500" },
-  { key: "ladbrokes", label: "Ladbrokes", initials: "LB", bg: "#C8102E", fg: "#FFFFFF" },
+  { key: "sportsbet", label: "Sportsbet", initials: "SB", bg: "#035DA7", fg: "#FAD701" },
+  { key: "tab", label: "TAB", initials: "TAB", bg: "#027758", fg: "#FFFFFF" },
+  { key: "betr", label: "BETR", initials: "BR", bg: "#093AD3", fg: "#84FFE5" },
+  { key: "bet365", label: "Bet365", initials: "365", bg: "#14805E", fg: "#FDDF1D" },
+  { key: "ladbrokes", label: "Ladbrokes", initials: "LB", bg: "#D12121", fg: "#FFFFFF" },
 ];
 const BOOKMAKER_MAP = Object.fromEntries(BOOKMAKERS.map(b => [b.key, b]));
 
@@ -591,10 +596,15 @@ function resolveBookmaker(value) {
   return { key, label: value, initials: value.trim().slice(0, 3).toUpperCase(), bg: "var(--bg-panel-2)", fg: "var(--text-muted)" };
 }
 
-function BookmakerBadge({ value, size = 20 }) {
+function BookmakerBadge({ value, size = 22 }) {
   const bm = resolveBookmaker(value);
   const [imgFailed, setImgFailed] = useState(false);
   if (!bm) return null;
+  const shared = {
+    width: size, height: size, borderRadius: Math.max(6, size * 0.28),
+    flexShrink: 0, border: "1px solid var(--border)",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+  };
   if (!imgFailed) {
     return (
       <img
@@ -602,16 +612,16 @@ function BookmakerBadge({ value, size = 20 }) {
         alt={bm.label}
         title={bm.label}
         onError={() => setImgFailed(true)}
-        style={{ width: size, height: size, borderRadius: 5, objectFit: "contain", background: "var(--bg-panel-2)", flexShrink: 0 }}
+        style={{ ...shared, objectFit: "cover", background: "var(--bg-panel-2)" }}
       />
     );
   }
   return (
     <span title={bm.label} style={{
+      ...shared,
       display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: size, height: size, borderRadius: 5, background: bm.bg, color: bm.fg,
+      background: bm.bg, color: bm.fg,
       fontSize: size * 0.36, fontWeight: 800, fontFamily: "var(--ui)", letterSpacing: "-0.02em",
-      flexShrink: 0
     }}>
       {bm.initials}
     </span>
@@ -689,7 +699,7 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
       <div
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
         style={{
-          background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10,
+          background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)",
           padding: "12px 14px", position: "relative",
           transform: `translateX(${dragX}px)`, transition: touch.current.active ? "none" : "transform 0.2s ease"
         }}>
@@ -716,7 +726,7 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
           <ResultBadge result={bet.result} />
-          {bet.bookmaker && <BookmakerBadge value={bet.bookmaker} size={20} />}
+          {bet.bookmaker && <BookmakerBadge value={bet.bookmaker} size={24} />}
         </div>
       </div>
 
@@ -768,9 +778,10 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
 
 function inputStyle(extra = {}) {
   return {
-    background: "var(--bg-panel-2)", border: "1px solid var(--border)", borderRadius: 7,
+    background: "var(--bg-panel-2)", border: "1px solid var(--border)", borderRadius: 9,
     color: "var(--text)", padding: "9px 10px", fontSize: 14, fontFamily: "var(--mono)",
-    outline: "none", width: "100%", boxSizing: "border-box", ...extra
+    outline: "none", width: "100%", boxSizing: "border-box",
+    transition: "border-color 0.12s ease, box-shadow 0.12s ease", ...extra
   };
 }
 
@@ -779,9 +790,11 @@ function btnStyle({ primary, small, full, danger } = {}) {
     background: primary ? "var(--accent-blue)" : danger ? "rgba(255,77,106,0.12)" : "var(--bg-panel-2)",
     color: primary ? "#FFFFFF" : danger ? "var(--loss)" : "var(--text)",
     border: primary ? "none" : "1px solid var(--border)",
-    borderRadius: 8, cursor: "pointer", fontFamily: "var(--ui)", fontWeight: 600,
-    padding: small ? "6px 10px" : "11px 14px", fontSize: small ? 12 : 14,
+    borderRadius: 10, cursor: "pointer", fontFamily: "var(--ui)", fontWeight: 600,
+    padding: small ? "6px 11px" : "11px 14px", fontSize: small ? 12 : 14,
     width: full ? "100%" : undefined,
+    boxShadow: primary ? "0 2px 8px rgba(3,92,165,0.35)" : "none",
+    transition: "transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease",
   };
 }
 
@@ -1008,7 +1021,7 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
           <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
             Open positions · {openPositions.list.length}
           </div>
-          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)", padding: "12px 14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 13 }}>
               <div><span style={{ color: "var(--text-muted)" }}>Exposure </span><b><AnimatedNumber value={openPositions.exposure} format={v => fmtMoney(v, { dp: 0 })} /></b></div>
               <div><span style={{ color: "var(--text-muted)" }}>Best </span><b style={{ color: "var(--profit)" }}>+<AnimatedNumber value={openPositions.bestCase} format={v => fmtMoney(v, { dp: 0 })} /></b></div>
@@ -1042,7 +1055,7 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
         <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
           Market breakdown
         </div>
-        <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)", overflow: "hidden" }}>
           {stats.marketRows.map((m, i) => (
             <button key={m.market} onClick={() => onSelectMarket(m.market)} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", width: "100%",
@@ -1072,7 +1085,7 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
           <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
             By bookmaker
           </div>
-          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)", overflow: "hidden" }}>
             {stats.bookmakerRows.map((bm, i) => (
               <button key={bm.key} onClick={() => setBookmakerF(bm.key)} style={{
                 display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", width: "100%",
@@ -1080,8 +1093,8 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
                 borderBottom: i < stats.bookmakerRows.length - 1 ? "1px solid var(--border)" : "none"
               }}>
                 {bm.key === "__none__"
-                  ? <span style={{ width: 20, height: 20, borderRadius: 5, background: "var(--bg-panel-2)", flexShrink: 0 }} />
-                  : <BookmakerBadge value={bm.key} size={20} />
+                  ? <span style={{ width: 24, height: 24, borderRadius: 7, background: "var(--bg-panel-2)", border: "1px solid var(--border)", flexShrink: 0 }} />
+                  : <BookmakerBadge value={bm.key} size={24} />
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{bm.label}</div>
@@ -1117,7 +1130,7 @@ function HighlightSection({ title, bets, valueKey }) {
       <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
         {title}
       </div>
-      <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)", overflow: "hidden" }}>
         {bets.map((b, i) => (
           <div key={b.id} style={{
             display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
@@ -1240,7 +1253,7 @@ function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilte
             </div>
           )}
           {scoreCheckState.status === "done" && scoreCheckState.suggestions.length > 0 && (
-            <div style={{ marginTop: 10, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ marginTop: 10, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)", overflow: "hidden" }}>
               {scoreCheckState.suggestions.map((s, i) => (
                 <div key={s.betId} style={{
                   padding: "10px 12px", display: "flex", alignItems: "center", gap: 10,
@@ -1426,14 +1439,14 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
       </div>
 
       <div style={{
-        background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10,
+        background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)",
         padding: "14px 14px 12px", marginTop: 4, marginBottom: 14
       }}>
         <EdgeMeter edgePct={calc?.edgePct ?? null} />
       </div>
 
       <div style={{
-        background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10,
+        background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)",
         padding: "14px", marginBottom: 14
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1827,21 +1840,25 @@ export default function App() {
         * { box-sizing: border-box; }
         input::placeholder { color: var(--text-muted); opacity: 0.7; }
         select { -webkit-appearance: none; appearance: none; }
-        input:focus, select:focus { border-color: var(--accent-blue) !important; }
+        input:focus, select:focus { border-color: var(--accent-blue) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 20%, transparent); }
         button { font-family: var(--ui); }
-        button:active { transform: scale(0.98); }
+        button:active { transform: scale(0.97); }
+        button:not(:disabled):hover { filter: brightness(1.06); }
+        a, button { -webkit-tap-highlight-color: transparent; }
         @keyframes skPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.9; } }
         @keyframes toastIn { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
       `}</style>
 
       <div style={{
-        position: "sticky", top: 0, zIndex: 10, background: "var(--header-bg)",
+        position: "sticky", top: 0, zIndex: 10,
+        background: "linear-gradient(180deg, var(--header-bg) 0%, var(--header-bg-2) 100%)",
         borderBottom: "1px solid var(--border-strong)",
+        boxShadow: "var(--shadow-md)",
         padding: "calc(14px + env(safe-area-inset-top)) 16px 14px",
         display: "flex", alignItems: "center", justifyContent: "space-between"
       }}>
-        <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "0.01em", whiteSpace: "nowrap", color: "var(--header-text)" }}>
-          FIFA 26 <span style={{ opacity: 0.7, fontWeight: 500 }}>Tracker</span>
+        <div style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: "0.01em", whiteSpace: "nowrap", color: "var(--header-text)" }}>
+          FIFA 26 <span style={{ opacity: 0.68, fontWeight: 500 }}>Tracker</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
           <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
@@ -1874,7 +1891,7 @@ export default function App() {
         <div style={{
           position: "fixed", bottom: "calc(74px + env(safe-area-inset-bottom))", left: "50%",
           transform: "translateX(-50%)", zIndex: 30, background: "var(--bg-panel)",
-          border: "1px solid var(--border-strong)", borderRadius: 10, padding: "10px 14px",
+          border: "1px solid var(--border-strong)", borderRadius: 12, padding: "10px 14px",
           display: "flex", alignItems: "center", gap: 14, boxShadow: "0 6px 24px rgba(0,0,0,0.25)",
           animation: "toastIn 0.2s ease", maxWidth: "calc(100% - 32px)"
         }}>
@@ -1894,22 +1911,29 @@ export default function App() {
         position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
         width: "100%", maxWidth: 480, background: "var(--nav-bg)",
         borderTop: "1px solid var(--border)", display: "flex", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
-        boxShadow: "0 -2px 12px rgba(0,0,0,0.12)"
+        boxShadow: theme === "dark" ? "0 -4px 16px rgba(0,0,0,0.4)" : "0 -4px 16px rgba(10,55,92,0.1)"
       }}>
         {[
           { id: "dashboard", label: "Dashboard", render: (color) => <SoccerBallIcon color={color} /> },
           { id: "log", label: "Bets", render: () => <DollarIcon color="var(--profit)" /> },
           { id: "add", label: "Add Bet", render: (color) => <PlusIcon color={color} /> },
         ].map(t => {
-          const color = tab === t.id ? "var(--accent-blue)" : "var(--text-muted)";
+          const active = tab === t.id;
+          const color = active ? "var(--accent-blue)" : "var(--text-muted)";
           return (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column",
               alignItems: "center", gap: 3, padding: "6px 0", cursor: "pointer",
-              color
+              color, position: "relative"
             }}>
+              {active && (
+                <span style={{
+                  position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)",
+                  width: 28, height: 3, borderRadius: 2, background: "var(--accent-blue)"
+                }} />
+              )}
               <span style={{ display: "flex", lineHeight: 1 }}>{t.render(color)}</span>
-              <span style={{ fontSize: 10.5, fontWeight: tab === t.id ? 700 : 500 }}>{t.label}</span>
+              <span style={{ fontSize: 10.5, fontWeight: active ? 700 : 500 }}>{t.label}</span>
             </button>
           );
         })}
