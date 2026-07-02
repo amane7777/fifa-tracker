@@ -1,0 +1,365 @@
+From b738130332ffbf4c14bec79d551f3b38db8deb4c Mon Sep 17 00:00:00 2001
+From: amane7777 <advait.mane7@gmail.com>
+Date: Thu, 2 Jul 2026 00:46:04 +0000
+Subject: [PATCH] Add bookmaker: dashboard filter + breakdown, bet log badge,
+ add-bet picker; add .gitignore
+
+---
+ .gitignore             |   3 +
+ public/logos/README.md |  17 ++++
+ src/App.jsx            | 185 +++++++++++++++++++++++++++++++++++++++--
+ 3 files changed, 197 insertions(+), 8 deletions(-)
+ create mode 100644 .gitignore
+ create mode 100644 public/logos/README.md
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..3bdd52e
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,3 @@
++node_modules/
++dist/
++.DS_Store
+diff --git a/public/logos/README.md b/public/logos/README.md
+new file mode 100644
+index 0000000..610c4f7
+--- /dev/null
++++ b/public/logos/README.md
+@@ -0,0 +1,17 @@
++Drop bookmaker logo files here named by key, e.g.:
++  sportsbet.png
++  tab.png
++  betr.png
++  bet365.png
++  ladbrokes.png
++  neds.png
++  pointsbet.png
++  unibet.png
++
++Square images work best (they're shown at ~20px, rounded). PNG or SVG both work —
++if you use SVG, just also add a same-named .png as fallback isn't required,
++the app requests "<key>.png" by default. If you'd rather use .svg, tell Claude
++and it'll switch the extension in BookmakerBadge.
++
++Until a file exists for a key, the app shows a small coloured initials badge
++instead automatically — no broken images.
+diff --git a/src/App.jsx b/src/App.jsx
+index 312c01c..2bdba8e 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -152,7 +152,7 @@ function exportBetsToCSV(bets) {
+   const headers = [
+     "Home", "Away", "Market", "Match #", "My Odds", "Bookie Odds",
+     "My Edge %", "Stake (A$)", "Home Goals", "Away Goals",
+-    "Result", "P&L (A$)", "Expected P&L (A$)", "Notes"
++    "Result", "P&L (A$)", "Expected P&L (A$)", "Notes", "Bookmaker"
+   ];
+   const rows = bets.map(b => [
+     displayTeam(b.home), displayTeam(b.away), b.market, b.matchNum,
+@@ -162,7 +162,8 @@ function exportBetsToCSV(bets) {
+     b.homeGoals, b.awayGoals, b.result,
+     b.pnl !== null && b.pnl !== undefined ? b.pnl.toFixed(2) : "",
+     expectedPnl(b).toFixed(2),
+-    b.notes || ""
++    b.notes || "",
++    b.bookmaker || ""
+   ]);
+   const csv = [headers, ...rows].map(row => row.map(csvEscape).join(",")).join("\n");
+   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+@@ -558,6 +559,62 @@ function StatCard({ label, value, sub, accent }) {
+   );
+ }
+ 
++// ── Bookmakers ────────────────────────────────────────────────────────────
++// Colours are approximations of each brand's palette, used only for a small
++// text/initial badge — not a reproduction of any logo. If you drop real logo
++// files into /public/logos/<key>.png (or .svg), BookmakerBadge will use them
++// automatically and only fall back to the coloured initials if the image
++// 404s, so no code change is needed once you add the files.
++const BOOKMAKERS = [
++  { key: "sportsbet", label: "Sportsbet", initials: "SB", bg: "#002B5C", fg: "#FFD100" },
++  { key: "tab", label: "TAB", initials: "TAB", bg: "#00843D", fg: "#FFFFFF" },
++  { key: "betr", label: "BETR", initials: "BR", bg: "#111111", fg: "#FF3B30" },
++  { key: "bet365", label: "Bet365", initials: "365", bg: "#046A38", fg: "#FFE500" },
++  { key: "ladbrokes", label: "Ladbrokes", initials: "LB", bg: "#C8102E", fg: "#FFFFFF" },
++  { key: "neds", label: "Neds", initials: "ND", bg: "#FFDD00", fg: "#111111" },
++  { key: "pointsbet", label: "PointsBet", initials: "PB", bg: "#E30613", fg: "#FFFFFF" },
++  { key: "unibet", label: "Unibet", initials: "UB", bg: "#147B4F", fg: "#FFFFFF" },
++];
++const BOOKMAKER_MAP = Object.fromEntries(BOOKMAKERS.map(b => [b.key, b]));
++
++// Resolves a stored bookmaker value (key or free-typed label) to a display
++// entry, falling back to a generic grey badge with its first letters.
++function resolveBookmaker(value) {
++  if (!value) return null;
++  const key = value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
++  if (BOOKMAKER_MAP[key]) return BOOKMAKER_MAP[key];
++  const byLabel = BOOKMAKERS.find(b => b.label.toLowerCase() === value.trim().toLowerCase());
++  if (byLabel) return byLabel;
++  return { key, label: value, initials: value.trim().slice(0, 3).toUpperCase(), bg: "var(--bg-panel-2)", fg: "var(--text-muted)" };
++}
++
++function BookmakerBadge({ value, size = 20 }) {
++  const bm = resolveBookmaker(value);
++  const [imgFailed, setImgFailed] = useState(false);
++  if (!bm) return null;
++  if (!imgFailed) {
++    return (
++      <img
++        src={`/logos/${bm.key}.png`}
++        alt={bm.label}
++        title={bm.label}
++        onError={() => setImgFailed(true)}
++        style={{ width: size, height: size, borderRadius: 5, objectFit: "contain", background: "var(--bg-panel-2)", flexShrink: 0 }}
++      />
++    );
++  }
++  return (
++    <span title={bm.label} style={{
++      display: "inline-flex", alignItems: "center", justifyContent: "center",
++      width: size, height: size, borderRadius: 5, background: bm.bg, color: bm.fg,
++      fontSize: size * 0.36, fontWeight: 800, fontFamily: "var(--ui)", letterSpacing: "-0.02em",
++      flexShrink: 0
++    }}>
++      {bm.initials}
++    </span>
++  );
++}
++
+ function ResultBadge({ result }) {
+   const map = {
+     W: { bg: "rgba(26,162,96,0.12)", color: "var(--profit)", label: "W" },
+@@ -654,7 +711,10 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
+             {displayTeam(bet.home)} <span>vs</span> {displayTeam(bet.away)}
+           </div>
+         </div>
+-        <ResultBadge result={bet.result} />
++        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
++          <ResultBadge result={bet.result} />
++          {bet.bookmaker && <BookmakerBadge value={bet.bookmaker} size={20} />}
++        </div>
+       </div>
+ 
+       <div style={{ display: "flex", gap: 16, marginTop: 10, fontFamily: "var(--mono)", fontSize: 12.5, alignItems: "center" }}>
+@@ -727,11 +787,16 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+   const [marketF, setMarketF] = useState("all");
+   const [edgeTier, setEdgeTier] = useState("all"); // all | 11 | 7 | 4 | sub4
+   const [stage, setStage] = useState("all"); // all | 1 | 2 | 3 | ko
++  const [bookmakerF, setBookmakerF] = useState("all");
+ 
+   const filteredBets = useMemo(() => {
+     return bets.filter(b => {
+       if (marketF !== "all" && b.market !== marketF) return false;
+       if (stage !== "all" && betStage(b) !== stage) return false;
++      if (bookmakerF !== "all") {
++        const key = b.bookmaker ? resolveBookmaker(b.bookmaker).key : null;
++        if (bookmakerF === "__none__" ? key !== null : key !== bookmakerF) return false;
++      }
+       if (edgeTier !== "all") {
+         const e = b.edgePct ?? -Infinity;
+         if (edgeTier === "11" && e < 11) return false;
+@@ -741,10 +806,19 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+       }
+       return true;
+     });
+-  }, [bets, marketF, edgeTier, stage]);
++  }, [bets, marketF, edgeTier, stage, bookmakerF]);
+ 
+-  const filtersActive = marketF !== "all" || edgeTier !== "all" || stage !== "all";
++  const filtersActive = marketF !== "all" || edgeTier !== "all" || stage !== "all" || bookmakerF !== "all";
+   const allMarkets = useMemo(() => Array.from(new Set(bets.map(b => b.market))).sort(), [bets]);
++  const allBookmakers = useMemo(() => {
++    const seen = new Map();
++    bets.forEach(b => {
++      if (!b.bookmaker) return;
++      const bm = resolveBookmaker(b.bookmaker);
++      if (!seen.has(bm.key)) seen.set(bm.key, bm.label);
++    });
++    return Array.from(seen.entries()); // [[key, label], ...]
++  }, [bets]);
+ 
+   // Pull-to-refresh (simple, top-of-page vertical drag).
+   const [pullY, setPullY] = useState(0);
+@@ -810,6 +884,23 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+       .map(([market, v]) => ({ market, ...v, winRate: v.settled ? (v.wins / v.settled) * 100 : 0 }))
+       .sort((a, b) => b.pnl - a.pnl);
+ 
++    const byBookmaker = {};
++    source.forEach(b => {
++      const label = b.bookmaker ? resolveBookmaker(b.bookmaker).label : "Not set";
++      const key = b.bookmaker ? resolveBookmaker(b.bookmaker).key : "__none__";
++      if (!byBookmaker[key]) byBookmaker[key] = { key, label, bets: 0, wins: 0, pnl: 0, staked: 0, settled: 0 };
++      byBookmaker[key].bets += 1;
++      byBookmaker[key].staked += b.stake || 0;
++      if (b.result === "W") byBookmaker[key].wins += 1;
++      if (b.result && b.result !== "Pending") {
++        byBookmaker[key].pnl += b.pnl || 0;
++        byBookmaker[key].settled += 1;
++      }
++    });
++    const bookmakerRows = Object.values(byBookmaker)
++      .map(v => ({ ...v, winRate: v.settled ? (v.wins / v.settled) * 100 : 0, roi: v.staked ? (v.pnl / v.staked) * 100 : 0 }))
++      .sort((a, b) => b.pnl - a.pnl);
++
+     const byStakeDesc = [...source].sort((a, b) => (b.stake || 0) - (a.stake || 0));
+     const topStaked = byStakeDesc.slice(0, 5);
+ 
+@@ -845,7 +936,7 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+ 
+     return {
+       wins, losses, pushes, pendingCount: pending.length, totalPnl, totalStaked, pendingStaked,
+-      roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, totalBets: source.length,
++      roi, winRate, avgEdge, avgWinOdds, avgLossOdds, marketRows, bookmakerRows, totalBets: source.length,
+       topStaked, topWinningByProfit, topLosingByStake, highestOddsWins,
+       stakingCurve, flatStake, flatFinal,
+     };
+@@ -890,15 +981,18 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+         <FilterSelect value={stage} onChange={setStage} options={[["all", "All stages"], ["1", "Week 1 (group)"], ["2", "Week 2 (group)"], ["3", "Week 3 (group)"], ["ko", "KO rounds"]]} />
+         <FilterSelect value={marketF} onChange={setMarketF} options={[["all", "All markets"], ...allMarkets.map(m => [m, m])]} />
+         <FilterSelect value={edgeTier} onChange={setEdgeTier} options={[["all", "All edges"], ["11", "11%+"], ["7", "7–10.9%"], ["4", "4–6.9%"], ["sub4", "<4%"]]} />
++        {allBookmakers.length > 0 && (
++          <FilterSelect value={bookmakerF} onChange={setBookmakerF} options={[["all", "All bookmakers"], ...allBookmakers, ["__none__", "No bookmaker"]]} />
++        )}
+         {filtersActive && (
+-          <button onClick={() => { setMarketF("all"); setEdgeTier("all"); setStage("all"); }} style={{
++          <button onClick={() => { setMarketF("all"); setEdgeTier("all"); setStage("all"); setBookmakerF("all"); }} style={{
+             background: "none", border: "none", color: "var(--accent-blue)", fontSize: 12, cursor: "pointer", padding: "4px 2px", fontWeight: 600
+           }}>Clear</button>
+         )}
+       </div>
+ 
+       <div style={{ padding: "10px 16px 0" }}>
+-        <CumulativeChart bets={filteredBets} animateKey={`${filteredBets.length}-${marketF}-${edgeTier}-${stage}`}
++        <CumulativeChart bets={filteredBets} animateKey={`${filteredBets.length}-${marketF}-${edgeTier}-${stage}-${bookmakerF}`}
+           stakingCurve={stats.stakingCurve} flatFinal={stats.flatFinal} tieredFinal={stats.totalPnl} />
+       </div>
+ 
+@@ -966,6 +1060,41 @@ function Dashboard({ bets, onSelectMarket, onRefresh }) {
+         </div>
+       </div>
+ 
++      {stats.bookmakerRows.length > 1 && (
++        <div style={{ padding: "4px 16px 0" }}>
++          <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
++            By bookmaker
++          </div>
++          <div style={{ background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
++            {stats.bookmakerRows.map((bm, i) => (
++              <button key={bm.key} onClick={() => setBookmakerF(bm.key)} style={{
++                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", width: "100%",
++                background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "var(--ui)",
++                borderBottom: i < stats.bookmakerRows.length - 1 ? "1px solid var(--border)" : "none"
++              }}>
++                {bm.key === "__none__"
++                  ? <span style={{ width: 20, height: 20, borderRadius: 5, background: "var(--bg-panel-2)", flexShrink: 0 }} />
++                  : <BookmakerBadge value={bm.key} size={20} />
++                }
++                <div style={{ flex: 1, minWidth: 0 }}>
++                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{bm.label}</div>
++                  <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
++                    {bm.bets} bets · {fmtPct(bm.winRate, 0)} WR · ROI {fmtPct(bm.roi, 1)}
++                  </div>
++                </div>
++                <div style={{
++                  fontFamily: "var(--mono)", fontSize: 13.5, fontWeight: 700,
++                  color: bm.pnl >= 0 ? "var(--profit)" : "var(--loss)"
++                }}>
++                  {fmtMoney(bm.pnl, { dp: 0 })}
++                </div>
++                <span style={{ color: "var(--text-muted)", fontSize: 14, marginLeft: 2 }}>›</span>
++              </button>
++            ))}
++          </div>
++        </div>
++      )}
++
+       <HighlightSection title="Top 5 biggest stakes" bets={stats.topStaked} valueKey="stake" />
+       <HighlightSection title="Top 5 winning bets by profit" bets={stats.topWinningByProfit} valueKey="pnl" />
+       <HighlightSection title="Top 5 losing bets by stake" bets={stats.topLosingByStake} valueKey="stake" />
+@@ -1176,6 +1305,10 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
+   const [notes, setNotes] = useState("");
+   const [manualStake, setManualStake] = useState("");
+   const [useManualStake, setUseManualStake] = useState(false);
++  const [bookmaker, setBookmaker] = useState(() => {
++    try { return window.localStorage.getItem("ft_last_bookmaker") || ""; } catch (e) { return ""; }
++  });
++  const [customBookmaker, setCustomBookmaker] = useState("");
+ 
+   const home = customHome;
+   const away = customAway;
+@@ -1186,6 +1319,7 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
+   const canSave = home && away && market && myOdds && bookieOdds && finalStake;
+ 
+   const save = () => {
++    const bm = bookmaker === "__other__" ? customBookmaker.trim() : bookmaker;
+     onAdd({
+       home, away, market,
+       matchNum: null,
+@@ -1194,7 +1328,9 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
+       stake: finalStake,
+       notes: notes.trim() || null,
+       homeGoals: null, awayGoals: null, result: "Pending", pnl: null,
++      bookmaker: bm || null,
+     });
++    try { if (bm) window.localStorage.setItem("ft_last_bookmaker", bm); } catch (e) { /* ignore */ }
+     setCustomHome(""); setCustomAway("");
+     setMyOdds(""); setBookieOdds(""); setNotes(""); setManualStake(""); setUseManualStake(false);
+     onNavigate("log");
+@@ -1221,6 +1357,37 @@ function AddBet({ markets, teams, onAdd, onNavigate }) {
+         </div>
+       </div>
+ 
++      <div style={{ marginBottom: 14 }}>
++        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.03em" }}>
++          Bookmaker
++        </div>
++        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
++          {BOOKMAKERS.map(bm => (
++            <button key={bm.key} onClick={() => setBookmaker(bm.key)} style={{
++              ...btnStyle({ small: true }), display: "flex", alignItems: "center", gap: 6,
++              background: bookmaker === bm.key ? "var(--accent-blue)" : "var(--bg-panel-2)",
++              color: bookmaker === bm.key ? "#FFFFFF" : "var(--text-muted)",
++              border: bookmaker === bm.key ? "none" : "1px solid var(--border)",
++            }}>
++              <BookmakerBadge value={bm.key} size={16} />
++              {bm.label}
++            </button>
++          ))}
++          <button onClick={() => setBookmaker("__other__")} style={{
++            ...btnStyle({ small: true }),
++            background: bookmaker === "__other__" ? "var(--accent-blue)" : "var(--bg-panel-2)",
++            color: bookmaker === "__other__" ? "#FFFFFF" : "var(--text-muted)",
++            border: bookmaker === "__other__" ? "none" : "1px solid var(--border)",
++          }}>
++            Other…
++          </button>
++        </div>
++        {bookmaker === "__other__" && (
++          <input value={customBookmaker} onChange={e => setCustomBookmaker(e.target.value)}
++            placeholder="Bookmaker name" style={inputStyle({ marginTop: 8 })} />
++        )}
++      </div>
++
+       <div style={{ display: "flex", gap: 8 }}>
+         <Field label="Home team" style={{ flex: 1 }}>
+           <select value={customHome} onChange={e => setCustomHome(e.target.value)} style={inputStyle({ fontFamily: "var(--ui)" })}>
+@@ -1319,6 +1486,7 @@ function toRow(b) {
+     match_num: b.matchNum, my_odds: b.myOdds, bookie_odds: b.bookieOdds,
+     edge_pct: b.edgePct, stake: b.stake, home_goals: b.homeGoals,
+     away_goals: b.awayGoals, result: b.result, pnl: b.pnl, notes: b.notes,
++    bookmaker: b.bookmaker || null,
+   };
+ }
+ 
+@@ -1328,6 +1496,7 @@ function fromRow(r) {
+     matchNum: r.match_num, myOdds: r.my_odds, bookieOdds: r.bookie_odds,
+     edgePct: r.edge_pct, stake: r.stake, homeGoals: r.home_goals,
+     awayGoals: r.away_goals, result: r.result, pnl: r.pnl, notes: r.notes,
++    bookmaker: r.bookmaker || null,
+   };
+ }
+ 
+-- 
+2.43.0
+
