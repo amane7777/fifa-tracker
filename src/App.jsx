@@ -699,11 +699,12 @@ function betTitle(bet) {
   return { text: bet.market, flag: null };
 }
 
-function BetRow({ bet, onUpdateResult, onDelete }) {
+function BetRow({ bet, onUpdateResult, onDelete, onSetBookmaker }) {
   const [editing, setEditing] = useState(false);
   const [hg, setHg] = useState(bet.homeGoals ?? "");
   const [ag, setAg] = useState(bet.awayGoals ?? "");
   const [dragX, setDragX] = useState(0);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const touch = React.useRef({ x: 0, active: false });
 
   const save = () => {
@@ -772,9 +773,34 @@ function BetRow({ bet, onUpdateResult, onDelete }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
           <ResultBadge result={bet.result} />
-          {bet.bookmaker && <BookmakerBadge value={bet.bookmaker} size={24} />}
+          {bet.bookmaker ? (
+            <BookmakerBadge value={bet.bookmaker} size={24} />
+          ) : (
+            <button onClick={() => setPickerOpen(v => !v)} style={{
+              background: "var(--bg-panel-2)", border: "1px dashed var(--border-strong)",
+              borderRadius: 7, color: "var(--text-muted)", fontSize: 9.5, fontWeight: 700,
+              padding: "3px 6px", cursor: "pointer", fontFamily: "var(--ui)", whiteSpace: "nowrap"
+            }}>
+              + Bookie
+            </button>
+          )}
         </div>
       </div>
+
+      {pickerOpen && !bet.bookmaker && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, padding: "8px", background: "var(--bg-panel-2)", borderRadius: 8 }}>
+          {BOOKMAKERS.map(bm => (
+            <button key={bm.key} onClick={() => { onSetBookmaker(bet.id, bm.key); setPickerOpen(false); }} style={{
+              display: "flex", alignItems: "center", gap: 5, background: "var(--bg-panel)",
+              border: "1px solid var(--border)", borderRadius: 20, padding: "3px 9px 3px 3px",
+              cursor: "pointer", fontSize: 11, fontWeight: 600, color: "var(--text)"
+            }}>
+              <BookmakerBadge value={bm.key} size={16} />
+              {bm.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 16, marginTop: 10, fontFamily: "var(--mono)", fontSize: 12.5, alignItems: "center" }}>
         <div><span style={{ color: "var(--text-muted)" }}>Stake </span>{fmtMoney(bet.stake, { dp: 0 })}</div>
@@ -1216,7 +1242,7 @@ function HighlightSection({ title, bets, valueKey }) {
 }
 
 // ── Bet log list ──────────────────────────────────────────────────────────
-function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilter, setMarketFilter, onCheckScores, scoreCheckState, onApplyScore, onRefresh }) {
+function BetLog({ bets, onUpdateResult, onDelete, onSetBookmaker, filter, setFilter, marketFilter, setMarketFilter, onCheckScores, scoreCheckState, onApplyScore, onRefresh }) {
   const filtered = useMemo(() => {
     let result = bets;
     if (marketFilter) {
@@ -1354,7 +1380,7 @@ function BetLog({ bets, onUpdateResult, onDelete, filter, setFilter, marketFilte
           No bets here yet.
         </div>
       ) : (
-        ordered.map(bet => <BetRow key={bet.id} bet={bet} onUpdateResult={onUpdateResult} onDelete={onDelete} />)
+        ordered.map(bet => <BetRow key={bet.id} bet={bet} onUpdateResult={onUpdateResult} onDelete={onDelete} onSetBookmaker={onSetBookmaker} />)
       )}
     </div>
   );
@@ -1740,6 +1766,15 @@ export default function App() {
     }));
   };
 
+  const setBookmakerOnBet = async (id, bookmakerKey) => {
+    setBets(prev => prev.map(b => (b.id === id ? { ...b, bookmaker: bookmakerKey } : b)));
+    await runWrite("set bookmaker", () => sbFetch(`bets?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ bookmaker: bookmakerKey }),
+    }));
+  };
+
   const deleteBet = async (id) => {
     const removed = bets.find(b => b.id === id);
     if (!removed) return;
@@ -1806,7 +1841,7 @@ export default function App() {
       if (b.stake === null || b.stake === undefined) return;
       const key = `${norm(displayTeam(b.home))}|${norm(displayTeam(b.away))}|${b.market}|${Number(b.stake).toFixed(2)}`;
       const correct = lookup.get(key);
-      if (correct && b.bookmaker !== correct) updates.push({ id: b.id, bookmaker: correct });
+      if (correct && !b.bookmaker) updates.push({ id: b.id, bookmaker: correct });
     });
     if (updates.length === 0) return;
     let cancelled = false;
@@ -1930,7 +1965,7 @@ export default function App() {
       </div>
 
       {tab === "dashboard" && <Dashboard bets={bets} onSelectMarket={(market) => { setMarketFilter(market); setTab("log"); }} onRefresh={refreshFromDb} />}
-      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} filter={logFilter} setFilter={setLogFilter} marketFilter={marketFilter} setMarketFilter={setMarketFilter} onCheckScores={checkLiveScores} scoreCheckState={scoreCheckState} onApplyScore={applyScoreSuggestion} onRefresh={refreshFromDb} />}
+      {tab === "log" && <BetLog bets={bets} onUpdateResult={updateResult} onDelete={deleteBet} onSetBookmaker={setBookmakerOnBet} filter={logFilter} setFilter={setLogFilter} marketFilter={marketFilter} setMarketFilter={setMarketFilter} onCheckScores={checkLiveScores} scoreCheckState={scoreCheckState} onApplyScore={applyScoreSuggestion} onRefresh={refreshFromDb} />}
       {tab === "add" && <AddBet markets={MARKETS} teams={TEAMS} onAdd={addBet} onNavigate={setTab} />}
 
       {toast && (
