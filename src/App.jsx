@@ -624,7 +624,7 @@ function StatCard({ label, value, sub, accent }) {
 // 404s, so no code change is needed once you add the files.
 const BOOKMAKERS = [
   { key: "sportsbet", label: "Sportsbet", initials: "SB", bg: "#035DA7", fg: "#FAD701" },
-  { key: "tab", label: "TAB", initials: "TAB", bg: "#027758", fg: "#FFFFFF" },
+  { key: "tab", label: "TAB", initials: "TAB", bg: "#26E36B", fg: "#004045" },
   { key: "betr", label: "BETR", initials: "BR", bg: "#093AD3", fg: "#84FFE5" },
   { key: "bet365", label: "Bet365", initials: "365", bg: "#14805E", fg: "#FDDF1D" },
   { key: "ladbrokes", label: "Ladbrokes", initials: "LB", bg: "#D12121", fg: "#FFFFFF" },
